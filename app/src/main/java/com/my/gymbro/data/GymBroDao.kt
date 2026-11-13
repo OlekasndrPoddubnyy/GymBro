@@ -10,9 +10,6 @@ interface GymBroDao {
     @Query("SELECT * FROM esercizi ORDER BY nome")
     fun getEsercizi(): Flow<List<Esercizio>>
 
-    @Query("SELECT COUNT(*) FROM esercizi")
-    suspend fun countEsercizi(): Int
-
     @Query("SELECT * FROM esercizi")
     suspend fun tuttiEsercizi(): List<Esercizio>
 
@@ -29,20 +26,22 @@ interface GymBroDao {
     @Query("SELECT * FROM schede WHERE id = :schedaId")
     fun getSchedaConEsercizi(schedaId: Long): Flow<SchedaConEsercizi?>
 
+    // Letture una-tantum (non Flow): usabili dentro una transazione.
+    @Query("SELECT * FROM schede")
+    suspend fun tutteSchede(): List<Scheda>
+
+    @Transaction
+    @Query("SELECT * FROM schede WHERE id = :schedaId")
+    suspend fun schedaConEserciziOra(schedaId: Long): SchedaConEsercizi?
+
     @Insert suspend fun insertScheda(scheda: Scheda): Long
     @Update suspend fun updateScheda(scheda: Scheda)
     @Delete suspend fun deleteScheda(scheda: Scheda)
 
     // ---------- Esercizi in scheda + serie ----------
     @Insert suspend fun insertEsercizioScheda(es: EsercizioScheda): Long
-    @Update suspend fun updateEsercizioScheda(es: EsercizioScheda)
-    @Delete suspend fun deleteEsercizioScheda(es: EsercizioScheda)
 
     @Insert suspend fun insertSerie(serie: List<SeriePianificata>)
-    @Update suspend fun updateSerie(serie: SeriePianificata)
-
-    @Query("DELETE FROM serie_pianificate WHERE esercizioSchedaId = :esercizioSchedaId")
-    suspend fun deleteSerieDi(esercizioSchedaId: Long)
 
     @Query("DELETE FROM esercizi_scheda WHERE schedaId = :schedaId")
     suspend fun deleteEserciziDiScheda(schedaId: Long)
@@ -72,6 +71,15 @@ interface GymBroDao {
     @Insert suspend fun insertSessione(sessione: Sessione): Long
     @Update suspend fun updateSessione(sessione: Sessione)
     @Insert suspend fun insertSerieEseguita(serie: SerieEseguita): Long
+
+    /** Cancella la sessione [id] solo se non ha nessuna serie registrata. */
+    @Query(
+        """
+        DELETE FROM sessioni WHERE id = :id
+          AND NOT EXISTS (SELECT 1 FROM serie_eseguite WHERE sessioneId = :id)
+        """
+    )
+    suspend fun deleteSessioneVuota(id: Long)
 
     @Query("SELECT * FROM sessioni ORDER BY dataInizio DESC")
     fun getSessioni(): Flow<List<Sessione>>

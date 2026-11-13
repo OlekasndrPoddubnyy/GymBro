@@ -135,13 +135,19 @@ private fun descriviRiga(r: RigaReport): String = when {
     }
 }
 
-private fun calcola(
+internal fun calcola(
     righe: List<RigaReport>,
-    sessioni: List<Sessione>,
+    tutteLeSessioni: List<Sessione>,
     sel: Long?,
     periodo: PeriodoReport,
     metrica: MetricaTrend,
 ): ReportState {
+    // Contano solo le sessioni con almeno una serie registrata: un allenamento aperto e chiuso
+    // subito (o abbandonato prima della prima serie) non è un allenamento fatto e non deve gonfiare
+    // conteggi, settimane consecutive, calendario e storico.
+    val conSerie = righe.mapTo(HashSet()) { it.sessioneId }
+    val sessioni = tutteLeSessioni.filter { it.id in conSerie }
+
     val oggi = LocalDate.now()
     val settimanaCorrente = inizioSettimana(oggi)
 

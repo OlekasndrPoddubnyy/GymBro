@@ -25,7 +25,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.my.gymbro.GymBroApplication
 import com.my.gymbro.data.Tema
 
 @Composable
@@ -34,19 +36,17 @@ fun GymBroApp(
     onTema: (Tema) -> Unit,
 ) {
     var sezione by rememberSaveable { mutableStateOf(Sezione.ESERCIZI) }
-    var allenamentoSchedaId by rememberSaveable { mutableStateOf(-1L) }
-    var allenamentoToken by rememberSaveable { mutableStateOf(0L) }
     // false = allenamento ridotto: continua in sottofondo e si naviga nel resto dell'app
     var allenamentoAperto by rememberSaveable { mutableStateOf(false) }
+    // L'allenamento vive in AllenamentoEngine (di processo): sopravvive anche alla ricreazione dell'Activity.
+    val schedaInCorso by AllenamentoEngine.schedaInCorso.collectAsStateWithLifecycle()
+    val app = LocalContext.current.applicationContext as GymBroApplication
 
-    val schedaInCorso = allenamentoSchedaId
-    if (schedaInCorso >= 0 && allenamentoAperto) {
+    if (schedaInCorso != null && allenamentoAperto) {
         AllenamentoScreen(
-            schedaId = schedaInCorso,
-            vmKey = "allenamento_$allenamentoToken",
             onRiduci = { allenamentoAperto = false },
             onFine = {
-                allenamentoSchedaId = -1L
+                AllenamentoEngine.chiudi()
                 allenamentoAperto = false
             }
         )
@@ -63,10 +63,11 @@ fun GymBroApp(
           Column {
             // Barra "in corso": allenamento ridotto o timer attivo mentre sei su un'altra schermata
             val info = allenamentoInCorso
-            if (schedaInCorso >= 0 && info != null) {
+            if (schedaInCorso != null) {
+                // Senza info l'allenamento è finito ma il riepilogo non è ancora stato chiuso.
                 BarraInCorso(
-                    etichetta = "Allenamento · ${info.nomeScheda}",
-                    testo = info.testo,
+                    etichetta = "Allenamento" + (info?.let { " · ${it.nomeScheda}" } ?: ""),
+                    testo = info?.testo ?: "Completato · vedi il riepilogo",
                     azione = "Torna",
                     onClick = { allenamentoAperto = true }
                 )
@@ -110,14 +111,9 @@ fun GymBroApp(
                     Sezione.ESERCIZI -> EserciziScreen()
                     Sezione.SCHEDE -> SchedeScreen(
                         onAvviaAllenamento = { id ->
-                            if (allenamentoSchedaId >= 0 && allenamentoInCorso != null) {
-                                // c'è già un allenamento in corso: si torna a quello
-                                allenamentoAperto = true
-                            } else {
-                                allenamentoToken = System.nanoTime()
-                                allenamentoSchedaId = id
-                                allenamentoAperto = true
-                            }
+                            // Se c'è già un allenamento in corso il motore lo ignora: si torna a quello.
+                            AllenamentoEngine.avvia(app, id)
+                            allenamentoAperto = true
                         }
                     )
                     Sezione.REPORT -> ReportScreen()

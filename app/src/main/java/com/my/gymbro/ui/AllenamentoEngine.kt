@@ -1,0 +1,436 @@
+package com.my.gymbro.ui
+
+import android.content.Context
+import com.my.gymbro.GymBroApplication
+import com.my.gymbro.TimerService
+import com.my.gymbro.data.Esercizio
+import com.my.gymbro.data.GymBroRepository
+import com.my.gymbro.data.Modalita
+import com.my.gymbro.data.SerieEseguita
+import com.my.gymbro.data.Sessione
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+private const val SEC_PREPARAZIONE = 10
+
+/** Un passo di esecuzione: una serie di un esercizio, nell'ordine reale (interlacciato per i superset). */
+internal data class Passo(
+    val idxEsercizio: Int,
+    val idxSerie: Int,
+    val recuperoDopo: Int,
+    val attesaPrima: Boolean,
+)
+
+/**
+ * Motore dell'allenamento in corso, singleton di processo come [TimerEngine]: stato, conto alla
+ * rovescia e salvataggi vivono finché vive il processo (tenuto in vita dal [TimerService]), quindi
+ * l'allenamento continua anche se l'Activity viene distrutta (app tolta dalle recenti, cambio
+ * configurazione, …). La UI lo osserva tramite [AllenamentoViewModel].
+ *
+ * Tutto gira sul main thread: i comandi dell'utente e lo scadere del tempo non si sovrappongono.
+ */
+object AllenamentoEngine {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val conto = ContoAllaRovescia(scope, AllenamentoAttivo::segnala)
+
+    private val _stato = MutableStateFlow(StatoEsecuzione())
+    val stato: StateFlow<StatoEsecuzione> = _stato.asStateFlow()
+
+    /** Scheda dell'allenamento aperto (in corso o nel riepilogo finale); null = nessuno. */
+    private val _schedaInCorso = MutableStateFlow<Long?>(null)
+    val schedaInCorso: StateFlow<Long?> = _schedaInCorso.asStateFlow()
+
+    /** true se c'è un allenamento avviato e non ancora completato. */
+    val inEsecuzione: Boolean
+        get() = _schedaInCorso.value != null && _stato.value.fase != Fase.COMPLETATO
+
+    private lateinit var repo: GymBroRepository
+    private lateinit var appContext: Context
+
+    private var sessioneId: Long = 0
+    private var dataInizio: Long = 0
+    private var prefill: Map<Long, List<SerieEseguita>> = emptyMap()
+    private var passi: List<Passo> = emptyList()
+    private var caricamento: Job? = null
+
+    /** Passi (serie) realmente completati e quelli saltati: è da qui che si capisce cosa resta da fare. */
+    private val completati = mutableSetOf<Int>()
+    private val saltati = mutableSetOf<Int>()
+    private fun risolto(i: Int) = i in completati || i in saltati
+
+    init {
+        // Lo stato è visibile al resto dell'app (barra "in corso") e al servizio in primo piano.
+        scope.launch {
+            _stato.collect { s ->
+                AllenamentoAttivo.aggiorna(
+                    if (!s.pronta || s.fase == Fase.COMPLETATO) null
+                    else AllenamentoAttivo.Info(s.nomeScheda, descriviEsecuzione(s))
+                )
+            }
+        }
+    }
+
+    /** Prima serie ancora da fare dopo [da]; se non ce ne sono, la prima rimasta indietro dall'inizio. */
+    private fun prossimoPasso(da: Int): Int? =
+        (da + 1 until passi.size).firstOrNull { !risolto(it) }
+            ?: (0 until passi.size).firstOrNull { !risolto(it) }
+
+    /** Indici degli esercizi del blocco di [idxEsercizio] (esercizio singolo o intero superset). */
+    private fun bloccoDi(idxEsercizio: Int): Set<Int> {
+        val esercizi = _stato.value.esercizi
+        val gruppo = esercizi.getOrNull(idxEsercizio)?.gruppo ?: return setOf(idxEsercizio)
+        return esercizi.indices.filter { esercizi[it].gruppo == gruppo }.toSet()
+    }
+
+    /**
+     * Avvia un nuovo allenamento della scheda [idScheda]. Ignorato se ce n'è già uno in corso
+     * (non completato); un eventuale riepilogo ancora aperto viene chiuso.
+     */
+    fun avvia(app: GymBroApplication, idScheda: Long) {
+        if (inEsecuzione) return
+        repo = app.repository
+        appContext = app.applicationContext
+        conto.ferma()
+        caricamento?.cancel()
+        sessioneId = 0
+        prefill = emptyMap()
+        passi = emptyList()
+        completati.clear()
+        saltati.clear()
+        _stato.value = StatoEsecuzione()
+        _schedaInCorso.value = idScheda
+
+        caricamento = scope.launch {
+            val completa = repo.caricaSchedaCompleta(idScheda)
+            val nome = completa?.scheda?.nome ?: "Allenamento"
+            val esercizi = completa?.esercizi
+                ?.sortedBy { it.esercizioScheda.ordine }
+                ?.map { ec ->
+                    EsercizioEsec(
+                        esercizioId = ec.esercizio.id,
+                        nome = ec.esercizio.nome,
+                        modalita = ec.esercizioScheda.modalita,
+                        gruppo = ec.esercizioScheda.gruppoSuperset,
+                        immaginePath = ec.esercizio.immaginePath,
+                        descrizione = ec.esercizio.descrizione,
+                        note = ec.esercizioScheda.note,
+                        gruppoMuscolare = ec.esercizio.gruppoMuscolare,
+                        serie = ec.serie.sortedBy { it.numero }.map { sp ->
+                            SerieEsec(sp.numero, sp.durataSec, sp.ripetizioni, sp.pesoKg, sp.recuperoSec)
+                        }.ifEmpty { listOf(SerieEsec(1, null, null, null, 60)) }
+                    )
+                }
+                .orEmpty()
+
+            dataInizio = System.currentTimeMillis()
+            sessioneId = repo.avviaSessione(
+                Sessione(schedaId = idScheda, nomeScheda = nome, dataInizio = dataInizio)
+            )
+            prefill = esercizi.associate { it.esercizioId to repo.prefillEsercizio(it.esercizioId, sessioneId) }
+            passi = costruisciPassi(esercizi)
+
+            if (passi.isEmpty()) {
+                _stato.update { it.copy(pronta = true, nomeScheda = nome, esercizi = esercizi, fase = Fase.COMPLETATO) }
+                terminaSessioneDb()
+                return@launch
+            }
+
+            val primo = passi.first()
+            _stato.update {
+                it.copy(
+                    pronta = true,
+                    nomeScheda = nome,
+                    esercizi = esercizi,
+                    indicePasso = 0,
+                    passiTotali = passi.size,
+                    indiceEsercizio = primo.idxEsercizio,
+                    indiceSerie = primo.idxSerie,
+                    fase = Fase.PREPARAZIONE
+                )
+            }
+            // Pubblica subito lo stato (il servizio controlla che ci sia qualcosa di attivo) e avvia
+            // il servizio in primo piano: conteggio, beep e vibrazione proseguono in background.
+            AllenamentoAttivo.aggiorna(AllenamentoAttivo.Info(nome, descriviEsecuzione(_stato.value)))
+            TimerService.start(appContext)
+            avviaCountdown(SEC_PREPARAZIONE) { iniziaPasso() }
+        }
+    }
+
+    /** Chiude l'allenamento (dopo il riepilogo): se era ancora in corso viene prima terminato. */
+    fun chiudi() {
+        if (inEsecuzione) terminaAllenamento()
+        caricamento?.cancel()
+        conto.ferma()
+        _schedaInCorso.value = null
+        _stato.value = StatoEsecuzione()
+    }
+
+    // ---------- azioni utente ----------
+
+    fun aggiornaRip(v: String) = _stato.update { it.copy(ripInput = v.filter(Char::isDigit)) }
+    fun aggiornaPeso(v: String) = _stato.update { it.copy(pesoInput = v.filter { c -> c.isDigit() || c == '.' }) }
+
+    /** Sostituisce l'esercizio [indice] con [nuovo] dalla libreria, mantenendo serie e modalità.
+     *  Vale solo per questa sessione: la scheda salvata non viene toccata. */
+    fun sostituisci(indice: Int, nuovo: Esercizio) {
+        _stato.update { s ->
+            val es = s.esercizi.getOrNull(indice) ?: return@update s
+            s.copy(esercizi = s.esercizi.toMutableList().also {
+                it[indice] = es.copy(
+                    esercizioId = nuovo.id,
+                    nome = nuovo.nome,
+                    immaginePath = nuovo.immaginePath,
+                    descrizione = nuovo.descrizione,
+                    note = null, // le note di tecnica erano dell'esercizio sostituito
+                    gruppoMuscolare = nuovo.gruppoMuscolare
+                )
+            })
+        }
+    }
+
+    fun saltaPreparazione() {
+        if (_stato.value.fase == Fase.PREPARAZIONE) iniziaPasso()
+    }
+
+    fun iniziaProssimo() {
+        if (_stato.value.fase == Fase.ATTESA) iniziaPasso()
+    }
+
+    fun saltaRecupero() {
+        if (_stato.value.fase == Fase.RECUPERO) iniziaPasso()
+    }
+
+    /** Conferma la serie corrente registrando i valori effettivi. */
+    fun completaSerie() {
+        val s = _stato.value
+        if (!s.pronta || s.fase == Fase.COMPLETATO) return
+        val passo = passi.getOrNull(s.indicePasso) ?: return
+        val es = s.esercizi.getOrNull(passo.idxEsercizio) ?: return
+        val serie = es.serie.getOrNull(passo.idxSerie) ?: return
+        conto.ferma()
+        val eseguita = SerieEseguita(
+            sessioneId = sessioneId,
+            esercizioId = es.esercizioId,
+            numero = serie.numero,
+            ripetizioni = if (es.modalita == Modalita.RIPETIZIONI) s.ripInput.toIntOrNull() else null,
+            pesoKg = if (es.modalita == Modalita.RIPETIZIONI) s.pesoInput.toFloatOrNull() else null,
+            durataSec = if (es.modalita == Modalita.TEMPO) serie.durataSec else null,
+            completata = true
+        )
+        // Scope di processo: il salvataggio non si perde se la UI se ne va subito dopo.
+        scope.launch { repo.registraSerie(eseguita) }
+        completati += s.indicePasso
+        saltati -= s.indicePasso
+        _stato.update { it.copy(log = it.log + eseguita) }
+        avanza(saltato = false)
+    }
+
+    /** Salta la serie/passo corrente senza registrarla. */
+    fun saltaSerie() {
+        if (!inEsecuzione) return
+        conto.ferma()
+        val cur = _stato.value.indicePasso
+        if (cur !in completati) saltati += cur
+        avanza(saltato = true)
+    }
+
+    /** Salta il resto del blocco corrente (esercizio singolo o superset): le serie già fatte restano. */
+    fun saltaEsercizio() {
+        if (!inEsecuzione) return
+        conto.ferma()
+        val cur = _stato.value.indicePasso
+        val blocco = passi.getOrNull(cur)?.let { bloccoDi(it.idxEsercizio) } ?: emptySet()
+        passi.indices.filter { passi[it].idxEsercizio in blocco && !risolto(it) }.forEach { saltati += it }
+        val next = prossimoPasso(cur)
+        if (next == null) terminaAllenamento()
+        else {
+            posizionaSu(next)
+            _stato.update { it.copy(fase = Fase.ATTESA) }
+        }
+    }
+
+    /**
+     * Va a un esercizio dalla lista, riprendendo dalla sua prima serie non ancora fatta.
+     * Se si è in recupero, il recupero continua col tempo rimasto e poi parte l'esercizio scelto.
+     * Le serie già completate (di qualsiasi esercizio) restano registrate.
+     */
+    fun vaiAEsercizio(indice: Int) {
+        if (!inEsecuzione) return
+        val target = passi.indices.firstOrNull { passi[it].idxEsercizio == indice && !risolto(it) } ?: return
+        val s = _stato.value
+        if (target == s.indicePasso) return
+        posizionaSu(target)
+        if (s.fase == Fase.RECUPERO) return   // il conto alla rovescia prosegue; alla fine iniziaPasso() usa il nuovo passo
+        conto.ferma()
+        _stato.update { it.copy(fase = Fase.ATTESA) }
+    }
+
+    fun terminaOra() {
+        if (inEsecuzione && _stato.value.pronta) terminaAllenamento()
+    }
+
+    // ---------- transizioni interne ----------
+
+    private fun iniziaPasso() {
+        val s = _stato.value
+        val passo = passi.getOrNull(s.indicePasso) ?: return terminaAllenamento()
+        val es = s.esercizi.getOrNull(passo.idxEsercizio) ?: return terminaAllenamento()
+        val serie = es.serie.getOrNull(passo.idxSerie) ?: return terminaAllenamento()
+        val (rip, peso) = prefillPer(es, passo.idxSerie, serie)
+        _stato.update { it.copy(fase = Fase.ESECUZIONE, ripInput = rip, pesoInput = peso, secondiRimanenti = 0) }
+        if (es.modalita == Modalita.TEMPO) {
+            avviaCountdown(serie.durataSec ?: 0) { completaSerie() }
+        } else {
+            conto.ferma()
+        }
+    }
+
+    private fun avanza(saltato: Boolean) {
+        val curIdx = _stato.value.indicePasso
+        val cur = passi.getOrNull(curIdx) ?: return terminaAllenamento()
+        val nextIdx = prossimoPasso(curIdx)
+        if (nextIdx == null) {
+            terminaAllenamento()
+            return
+        }
+        val next = passi[nextIdx]
+        posizionaSu(nextIdx)
+        // Si cambia blocco (nuovo esercizio o ritorno a uno lasciato indietro): si aspetta "Inizia".
+        val stessoBlocco = nextIdx == curIdx + 1 && !next.attesaPrima
+        val cambioBlocco = !stessoBlocco && next.idxEsercizio !in bloccoDi(cur.idxEsercizio)
+        val rec = if (saltato) 0 else cur.recuperoDopo
+        when {
+            cambioBlocco || next.attesaPrima -> _stato.update { it.copy(fase = Fase.ATTESA) }
+            rec > 0 -> {
+                _stato.update { it.copy(fase = Fase.RECUPERO) }
+                avviaCountdown(rec) { iniziaPasso() }
+            }
+            else -> iniziaPasso()
+        }
+    }
+
+    /** Aggiorna l'indice di passo e i derivati: esercizi completati, serie fatte, avanzamento. */
+    private fun posizionaSu(idx: Int) {
+        val p = passi.getOrNull(idx)
+        val esercizi = _stato.value.esercizi
+        val fatti = esercizi.indices.filter { e ->
+            val suoi = passi.indices.filter { passi[it].idxEsercizio == e }
+            suoi.isNotEmpty() && suoi.all { risolto(it) }
+        }.toSet()
+        val serieFatte = esercizi.indices.associateWith { e -> completati.count { passi[it].idxEsercizio == e } }
+        _stato.update {
+            it.copy(
+                indicePasso = idx,
+                indiceEsercizio = p?.idxEsercizio ?: it.indiceEsercizio,
+                indiceSerie = p?.idxSerie ?: it.indiceSerie,
+                eserciziFatti = fatti,
+                serieFatte = serieFatte,
+                passiFatti = completati.size + saltati.count { it !in completati }
+            )
+        }
+    }
+
+    private fun prefillPer(es: EsercizioEsec, idxSerie: Int, serie: SerieEsec): Pair<String, String> {
+        val ultima = prefill[es.esercizioId]?.getOrNull(idxSerie)
+        val rip = ultima?.ripetizioni?.toString()
+            ?: serie.ripetizioniPianificate?.let(::ultimoNumero).orEmpty()
+        val peso = ultima?.pesoKg?.let(::formattaPesoVm)
+            ?: serie.pesoPianificato?.let(::formattaPesoVm).orEmpty()
+        return rip to peso
+    }
+
+    private fun terminaAllenamento() {
+        conto.ferma()
+        AllenamentoAttivo.aggiorna(null)
+        _stato.update { it.copy(fase = Fase.COMPLETATO, durataTotaleMs = System.currentTimeMillis() - dataInizio) }
+        terminaSessioneDb()
+    }
+
+    private fun terminaSessioneDb() {
+        val id = sessioneId
+        if (id == 0L) return
+        if (_stato.value.log.isEmpty()) {
+            // Nessuna serie fatta: non è un allenamento, non deve comparire nei Report.
+            scope.launch { repo.scartaSessioneVuota(id) }
+            return
+        }
+        val sessione = Sessione(
+            id = sessioneId,
+            schedaId = _schedaInCorso.value,
+            nomeScheda = _stato.value.nomeScheda,
+            dataInizio = dataInizio,
+            dataFine = System.currentTimeMillis()
+        )
+        scope.launch { repo.terminaSessione(sessione) }
+    }
+
+    /** Conto alla rovescia della fase corrente, con i secondi pubblicati nello stato. */
+    private fun avviaCountdown(secondi: Int, alFine: () -> Unit) {
+        _stato.update { it.copy(secondiRimanenti = secondi, secondiTotali = secondi) }
+        conto.avvia(
+            secondi,
+            onSecondo = { rim -> _stato.update { it.copy(secondiRimanenti = rim) } },
+            onFine = alFine
+        )
+    }
+}
+
+/**
+ * Costruisce la sequenza reale dei passi. Esercizi con lo stesso [EsercizioEsec.gruppo] consecutivi
+ * formano un superset: un set per esercizio a giro, recupero solo a fine giro, nessuna attesa interna.
+ */
+internal fun costruisciPassi(esercizi: List<EsercizioEsec>): List<Passo> {
+    val passi = mutableListOf<Passo>()
+    var i = 0
+    var primoBlocco = true
+    while (i < esercizi.size) {
+        val gruppo = esercizi[i].gruppo
+        if (gruppo == null) {
+            val e = esercizi[i]
+            e.serie.indices.forEach { s ->
+                passi += Passo(
+                    idxEsercizio = i,
+                    idxSerie = s,
+                    recuperoDopo = e.serie[s].recuperoSec,
+                    attesaPrima = s == 0 && !primoBlocco
+                )
+            }
+            i++
+        } else {
+            val indici = mutableListOf(i)
+            var j = i + 1
+            while (j < esercizi.size && esercizi[j].gruppo == gruppo) { indici += j; j++ }
+            val maxSerie = indici.maxOf { esercizi[it].serie.size }
+            for (r in 0 until maxSerie) {
+                val attivi = indici.filter { r < esercizi[it].serie.size }
+                attivi.forEachIndexed { k, idx ->
+                    val ultimoDelGiro = k == attivi.lastIndex
+                    passi += Passo(
+                        idxEsercizio = idx,
+                        idxSerie = r,
+                        recuperoDopo = if (ultimoDelGiro) esercizi[idx].serie[r].recuperoSec else 0,
+                        attesaPrima = r == 0 && k == 0 && !primoBlocco
+                    )
+                }
+            }
+            i = j
+        }
+        primoBlocco = false
+    }
+    return passi
+}
+
+/** Ultimo gruppo di cifre in una stringa tipo "8-12" → "12". */
+private fun ultimoNumero(s: String): String =
+    Regex("\\d+").findAll(s).lastOrNull()?.value ?: ""
+
+private fun formattaPesoVm(kg: Float): String =
+    if (kg % 1f == 0f) kg.toInt().toString() else kg.toString()

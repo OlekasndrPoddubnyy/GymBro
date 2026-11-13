@@ -40,13 +40,11 @@ import java.util.concurrent.TimeUnit
 
 @Composable
 fun AllenamentoScreen(
-    schedaId: Long,
-    vmKey: String,
     onRiduci: () -> Unit,
     onFine: () -> Unit,
 ) {
-    val vm: AllenamentoViewModel = viewModel(key = vmKey, factory = AllenamentoViewModel.Factory)
-    LaunchedEffect(schedaId) { vm.avvia(schedaId) }
+    // L'allenamento lo avvia GymBroApp tramite AllenamentoEngine: qui lo si mostra soltanto.
+    val vm: AllenamentoViewModel = viewModel(factory = AllenamentoViewModel.Factory)
 
     val stato by vm.stato.collectAsStateWithLifecycle()
     KeepScreenOn()

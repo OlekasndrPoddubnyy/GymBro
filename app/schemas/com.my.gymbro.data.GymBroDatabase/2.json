@@ -1,0 +1,436 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "0239408299fdfffe4ad237514b8fe017",
+    "entities": [
+      {
+        "tableName": "esercizi",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `gruppoMuscolare` TEXT NOT NULL, `attrezzatura` TEXT NOT NULL, `descrizione` TEXT, `immaginePath` TEXT, `predefinito` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gruppoMuscolare",
+            "columnName": "gruppoMuscolare",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attrezzatura",
+            "columnName": "attrezzatura",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "descrizione",
+            "columnName": "descrizione",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "immaginePath",
+            "columnName": "immaginePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "predefinito",
+            "columnName": "predefinito",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "schede",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `note` TEXT, `dataCreazione` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dataCreazione",
+            "columnName": "dataCreazione",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "esercizi_scheda",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `schedaId` INTEGER NOT NULL, `esercizioId` INTEGER NOT NULL, `modalita` TEXT NOT NULL, `ordine` INTEGER NOT NULL, `note` TEXT, `gruppoSuperset` INTEGER, FOREIGN KEY(`schedaId`) REFERENCES `schede`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`esercizioId`) REFERENCES `esercizi`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schedaId",
+            "columnName": "schedaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "esercizioId",
+            "columnName": "esercizioId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modalita",
+            "columnName": "modalita",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordine",
+            "columnName": "ordine",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gruppoSuperset",
+            "columnName": "gruppoSuperset",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_esercizi_scheda_schedaId",
+            "unique": false,
+            "columnNames": [
+              "schedaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_esercizi_scheda_schedaId` ON `${TABLE_NAME}` (`schedaId`)"
+          },
+          {
+            "name": "index_esercizi_scheda_esercizioId",
+            "unique": false,
+            "columnNames": [
+              "esercizioId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_esercizi_scheda_esercizioId` ON `${TABLE_NAME}` (`esercizioId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "schede",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "schedaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "esercizi",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "esercizioId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "serie_pianificate",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `esercizioSchedaId` INTEGER NOT NULL, `numero` INTEGER NOT NULL, `durataSec` INTEGER, `ripetizioni` TEXT, `pesoKg` REAL, `recuperoSec` INTEGER NOT NULL, FOREIGN KEY(`esercizioSchedaId`) REFERENCES `esercizi_scheda`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "esercizioSchedaId",
+            "columnName": "esercizioSchedaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durataSec",
+            "columnName": "durataSec",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "ripetizioni",
+            "columnName": "ripetizioni",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pesoKg",
+            "columnName": "pesoKg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "recuperoSec",
+            "columnName": "recuperoSec",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_serie_pianificate_esercizioSchedaId",
+            "unique": false,
+            "columnNames": [
+              "esercizioSchedaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_serie_pianificate_esercizioSchedaId` ON `${TABLE_NAME}` (`esercizioSchedaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "esercizi_scheda",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "esercizioSchedaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sessioni",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `schedaId` INTEGER, `nomeScheda` TEXT NOT NULL, `dataInizio` INTEGER NOT NULL, `dataFine` INTEGER, FOREIGN KEY(`schedaId`) REFERENCES `schede`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schedaId",
+            "columnName": "schedaId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nomeScheda",
+            "columnName": "nomeScheda",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataInizio",
+            "columnName": "dataInizio",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataFine",
+            "columnName": "dataFine",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sessioni_schedaId",
+            "unique": false,
+            "columnNames": [
+              "schedaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sessioni_schedaId` ON `${TABLE_NAME}` (`schedaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "schede",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "schedaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "serie_eseguite",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessioneId` INTEGER NOT NULL, `esercizioId` INTEGER NOT NULL, `numero` INTEGER NOT NULL, `ripetizioni` INTEGER, `pesoKg` REAL, `durataSec` INTEGER, `completata` INTEGER NOT NULL, FOREIGN KEY(`sessioneId`) REFERENCES `sessioni`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`esercizioId`) REFERENCES `esercizi`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessioneId",
+            "columnName": "sessioneId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "esercizioId",
+            "columnName": "esercizioId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numero",
+            "columnName": "numero",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ripetizioni",
+            "columnName": "ripetizioni",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pesoKg",
+            "columnName": "pesoKg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "durataSec",
+            "columnName": "durataSec",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "completata",
+            "columnName": "completata",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_serie_eseguite_sessioneId",
+            "unique": false,
+            "columnNames": [
+              "sessioneId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_serie_eseguite_sessioneId` ON `${TABLE_NAME}` (`sessioneId`)"
+          },
+          {
+            "name": "index_serie_eseguite_esercizioId",
+            "unique": false,
+            "columnNames": [
+              "esercizioId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_serie_eseguite_esercizioId` ON `${TABLE_NAME}` (`esercizioId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sessioni",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessioneId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "esercizi",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "esercizioId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0239408299fdfffe4ad237514b8fe017')"
+    ]
+  }
+}

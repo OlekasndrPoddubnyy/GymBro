@@ -1,11 +1,8 @@
 package com.my.gymbro.ui
 
-import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -13,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /**
  * Fasi del timer a serie.
@@ -43,10 +39,13 @@ const val SEC_PREPARAZIONE_TIMER = 3
  * Motore del Timer a serie (spec 4.1) come singleton di processo: il conteggio gira in uno scope
  * applicativo, quindi continua anche se l'Activity viene distrutta. Il [com.my.gymbro.TimerService]
  * lo tiene vivo in background e ne mostra lo stato in notifica.
+ *
+ * Tutto gira sul main thread, come i comandi della UI e delle azioni in notifica: lo scadere del
+ * tempo e un "Salta" premuto nello stesso istante non possono sovrapporsi e far saltare due serie.
  */
 object TimerEngine {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _stato = MutableStateFlow(StatoTimer())
     val stato: StateFlow<StatoTimer> = _stato.asStateFlow()
@@ -54,7 +53,7 @@ object TimerEngine {
     private val _segnali = MutableSharedFlow<Segnale>(extraBufferCapacity = 8)
     val segnali: SharedFlow<Segnale> = _segnali.asSharedFlow()
 
-    private var timerJob: Job? = null
+    private val conto = ContoAllaRovescia(scope) { _segnali.tryEmit(it) }
 
     val attivo: Boolean get() = _stato.value.fase != FaseTimer.CONFIG
 
@@ -77,7 +76,7 @@ object TimerEngine {
     /** Fine della serie a lavoro libero: parte il recupero (o si finisce, se era l'ultima). */
     fun fineSerie() {
         if (_stato.value.fase != FaseTimer.SERIE) return
-        timerJob?.cancel()
+        conto.ferma()
         _segnali.tryEmit(Segnale.FINE)
         serieFinita()
     }
@@ -85,11 +84,11 @@ object TimerEngine {
     fun skip() {
         when (_stato.value.fase) {
             FaseTimer.PREPARAZIONE -> {
-                timerJob?.cancel()
+                conto.ferma()
                 iniziaSerie()
             }
             FaseTimer.SERIE, FaseTimer.RECUPERO, FaseTimer.ATTESA -> {
-                timerJob?.cancel()
+                conto.ferma()
                 if (_stato.value.ultimaSerie) finisci() else prossima()
             }
             else -> {}
@@ -100,10 +99,7 @@ object TimerEngine {
         if (_stato.value.fase == FaseTimer.ATTESA) prossima()
     }
 
-    fun stop() {
-        timerJob?.cancel()
-        _stato.update { it.copy(fase = FaseTimer.CONFIG, serieCorrente = 0, secondiRimanenti = 0, secondiTrascorsi = 0) }
-    }
+    fun stop() = finisci()
 
     private fun iniziaSerie() {
         _stato.update { it.copy(fase = FaseTimer.SERIE, secondiTrascorsi = 0) }
@@ -129,57 +125,18 @@ object TimerEngine {
     }
 
     private fun finisci() {
-        timerJob?.cancel()
+        conto.ferma()
         _stato.update { it.copy(fase = FaseTimer.CONFIG, serieCorrente = 0, secondiRimanenti = 0, secondiTrascorsi = 0) }
     }
 
-    /**
-     * Conteggio in avanti per il lavoro libero; si ferma con [fineSerie], [skip] o [stop].
-     * Il tempo è calcolato sull'orologio di sistema, quindi resta esatto anche in background.
-     */
+    /** Conteggio in avanti per il lavoro libero; si ferma con [fineSerie], [skip] o [stop]. */
     private fun cronometro() {
-        timerJob?.cancel()
         _stato.update { it.copy(secondiRimanenti = 0, secondiTrascorsi = 0) }
-        val inizio = SystemClock.elapsedRealtime()
-        timerJob = scope.launch {
-            var ultimo = 0
-            while (true) {
-                delay(250)
-                val trascorsi = ((SystemClock.elapsedRealtime() - inizio) / 1000).toInt()
-                if (trascorsi != ultimo) {
-                    ultimo = trascorsi
-                    _stato.update { it.copy(secondiTrascorsi = trascorsi) }
-                }
-            }
-        }
+        conto.avviaInAvanti { t -> _stato.update { it.copy(secondiTrascorsi = t) } }
     }
 
-    /**
-     * Conto alla rovescia basato sull'orologio di sistema (non sul numero di attese): se l'app viene
-     * rallentata in background il tempo resta giusto e la fase finisce all'istante corretto.
-     */
     private fun countdown(secondi: Int, alFine: () -> Unit) {
-        timerJob?.cancel()
         _stato.update { it.copy(secondiRimanenti = secondi) }
-        if (secondi <= 0) {
-            alFine()
-            return
-        }
-        val fine = SystemClock.elapsedRealtime() + secondi * 1000L
-        timerJob = scope.launch {
-            var ultimo = secondi
-            while (true) {
-                delay(200)
-                val rim = ((fine - SystemClock.elapsedRealtime() + 999) / 1000).toInt().coerceAtLeast(0)
-                if (rim != ultimo) {
-                    ultimo = rim
-                    _stato.update { it.copy(secondiRimanenti = rim) }
-                    if (rim in 1..3) _segnali.tryEmit(Segnale.TICK)
-                }
-                if (rim <= 0) break
-            }
-            _segnali.tryEmit(Segnale.FINE)
-            alFine()
-        }
+        conto.avvia(secondi, onSecondo = { rim -> _stato.update { it.copy(secondiRimanenti = rim) } }, onFine = alFine)
     }
 }

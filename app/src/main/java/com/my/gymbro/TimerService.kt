@@ -88,9 +88,10 @@ class TimerService : Service() {
     }
 
     // ---------- beep + vibrazione (funzionano anche con l'app in background) ----------
+    // Canale sveglia: i beep si sentono anche con il volume dei media a zero.
 
     private fun feedback(s: Segnale) {
-        if (tono == null) tono = runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 80) }.getOrNull()
+        if (tono == null) tono = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 80) }.getOrNull()
         val vibratore = runCatching {
             getSystemService(VibratorManager::class.java)?.defaultVibrator
         }.getOrNull()

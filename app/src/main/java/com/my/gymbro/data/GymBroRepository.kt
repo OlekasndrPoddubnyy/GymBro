@@ -1,9 +1,12 @@
 package com.my.gymbro.data
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
-class GymBroRepository(private val dao: GymBroDao) {
+class GymBroRepository(private val db: GymBroDatabase) {
+
+    private val dao: GymBroDao = db.gymBroDao()
 
     val esercizi: Flow<List<Esercizio>> = dao.getEsercizi()
     val schede: Flow<List<Scheda>> = dao.getSchede()
@@ -16,8 +19,9 @@ class GymBroRepository(private val dao: GymBroDao) {
      * distruttivo: non duplica, non sovrascrive dati esistenti né esercizi creati dall'utente.
      * Una descrizione predefinita viene aggiornata solo se quella salvata è ancora contenuta nella
      * nuova (es. aggiunta della riga "Technogym: …"): le descrizioni modificate dall'utente restano.
+     * Tutto in un'unica transazione: se qualcosa va storto non resta un catalogo a metà.
      */
-    suspend fun assicuraEserciziPredefiniti(assetSlugs: Set<String> = emptySet()) {
+    suspend fun assicuraEserciziPredefiniti(assetSlugs: Set<String> = emptySet()) = db.withTransaction {
         val perNome = dao.tuttiEsercizi().associateBy { it.nome }
         val daInserire = mutableListOf<Esercizio>()
         for (seed in eserciziPredefiniti()) {
@@ -49,9 +53,10 @@ class GymBroRepository(private val dao: GymBroDao) {
      *  - quelle già presenti (stesso nome) vengono sostituite con la versione attuale.
      * Gli esercizi vengono cercati per nome nella libreria; quelli mancanti vengono saltati.
      * Le schede create dall'utente non vengono mai toccate.
+     * Tutto in un'unica transazione: o si aggiornano tutte le schede o nessuna.
      */
-    suspend fun assicuraSchedePredefinite() {
-        val schedePerNome = dao.getSchede().first().associateBy { it.nome }
+    suspend fun assicuraSchedePredefinite() = db.withTransaction {
+        val schedePerNome = dao.tutteSchede().associateBy { it.nome }
         val perNome = dao.tuttiEsercizi().associateBy { it.nome }
         val adesso = System.currentTimeMillis()
         // La lista schede è ordinata per data di creazione decrescente: la A deve apparire per prima.
@@ -80,7 +85,7 @@ class GymBroRepository(private val dao: GymBroDao) {
         template: SchedaTemplate,
         perNome: Map<String, Esercizio>,
     ) {
-        val completa = dao.getSchedaConEsercizi(schedaId).first() ?: return
+        val completa = dao.schedaConEserciziOra(schedaId) ?: return
         val righe = righeDaTemplate(template.esercizi, perNome)
         if (righe.isEmpty()) return
         dao.salvaSchedaConEsercizi(completa.scheda.copy(note = template.note), righe)
@@ -125,19 +130,7 @@ class GymBroRepository(private val dao: GymBroDao) {
     suspend fun eliminaEsercizio(e: Esercizio) = dao.deleteEsercizio(e)
 
     // Schede
-    suspend fun creaScheda(s: Scheda): Long = dao.insertScheda(s)
-    suspend fun aggiornaScheda(s: Scheda) = dao.updateScheda(s)
     suspend fun eliminaScheda(s: Scheda) = dao.deleteScheda(s)
-
-    // Esercizi in scheda + serie
-    suspend fun aggiungiEsercizioAScheda(es: EsercizioScheda): Long = dao.insertEsercizioScheda(es)
-    suspend fun aggiornaEsercizioScheda(es: EsercizioScheda) = dao.updateEsercizioScheda(es)
-    suspend fun rimuoviEsercizioScheda(es: EsercizioScheda) = dao.deleteEsercizioScheda(es)
-
-    suspend fun sostituisciSerie(esercizioSchedaId: Long, serie: List<SeriePianificata>) {
-        dao.deleteSerieDi(esercizioSchedaId)
-        dao.insertSerie(serie)
-    }
 
     // Scheda completa (template + esercizi + serie)
     suspend fun salvaScheda(
@@ -154,6 +147,9 @@ class GymBroRepository(private val dao: GymBroDao) {
     suspend fun avviaSessione(s: Sessione): Long = dao.insertSessione(s)
     suspend fun terminaSessione(s: Sessione) = dao.updateSessione(s)
     suspend fun registraSerie(s: SerieEseguita): Long = dao.insertSerieEseguita(s)
+
+    /** Elimina una sessione senza serie (allenamento chiuso prima di farne anche solo una). */
+    suspend fun scartaSessioneVuota(id: Long) = dao.deleteSessioneVuota(id)
 
     suspend fun prefillEsercizio(esercizioId: Long, sessioneCorrente: Long): List<SerieEseguita> =
         dao.ultimeSerieEseguite(esercizioId, sessioneCorrente)

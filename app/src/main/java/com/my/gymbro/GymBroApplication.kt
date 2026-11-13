@@ -1,9 +1,11 @@
 package com.my.gymbro
 
 import android.app.Application
+import android.util.Log
 import com.my.gymbro.data.GymBroDatabase
 import com.my.gymbro.data.GymBroRepository
 import com.my.gymbro.data.Impostazioni
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,30 +17,56 @@ private const val VERSIONE_ESERCIZI = 12
 /** Versione delle schede predefinite. v4–v11: schede Total body A/B/C. Aumentarla SOLO quando cambiano i template in SchedePredefinite.kt (sovrascrive le schede omonime). */
 private const val VERSIONE_SCHEDE = 11
 
+private const val TAG = "GymBro"
+
 class GymBroApplication : Application() {
     val repository: GymBroRepository by lazy {
-        GymBroRepository(GymBroDatabase.getInstance(this).gymBroDao())
+        GymBroRepository(GymBroDatabase.getInstance(this))
     }
     val impostazioni: Impostazioni by lazy { Impostazioni(this) }
 
+    /** Scope di processo per il lavoro di avvio (non legato a nessuna schermata). */
+    private val scopeApp = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
-        // Seeding incrementale di esercizi e schede predefinite (nuovi DB ed esistenti, senza duplicare).
+        allineaDatiPredefiniti()
+    }
+
+    /**
+     * Seeding incrementale di esercizi e schede predefinite (nuovi DB ed esistenti, senza duplicare).
+     * Un errore non fa crashare l'app: viene registrato nel log, la versione non avanza e si
+     * riprova al prossimo avvio.
+     */
+    private fun allineaDatiPredefiniti() {
         val aggiornaEsercizi = impostazioni.versioneSeed < VERSIONE_ESERCIZI
         val aggiornaSchede = impostazioni.versioneSchede < VERSIONE_SCHEDE
-        if (aggiornaEsercizi || aggiornaSchede) {
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                if (aggiornaEsercizi) {
+        if (!aggiornaEsercizi && !aggiornaSchede) return
+
+        scopeApp.launch {
+            if (aggiornaEsercizi) {
+                val ok = tenta("esercizi predefiniti") {
                     val slugs = assets.list("esercizi")?.toSet() ?: emptySet()
                     repository.assicuraEserciziPredefiniti(slugs)
-                    impostazioni.versioneSeed = VERSIONE_ESERCIZI
                 }
-                // Dopo gli esercizi: le schede li cercano per nome nella libreria.
-                if (aggiornaSchede) {
-                    repository.assicuraSchedePredefinite()
-                    impostazioni.versioneSchede = VERSIONE_SCHEDE
-                }
+                // Le schede cercano gli esercizi per nome: senza catalogo aggiornato si rimanda tutto.
+                if (!ok) return@launch
+                impostazioni.versioneSeed = VERSIONE_ESERCIZI
+            }
+            if (aggiornaSchede && tenta("schede predefinite") { repository.assicuraSchedePredefinite() }) {
+                impostazioni.versioneSchede = VERSIONE_SCHEDE
             }
         }
     }
+
+    private suspend fun tenta(cosa: String, blocco: suspend () -> Unit): Boolean =
+        try {
+            blocco()
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Allineamento $cosa fallito: si riprova al prossimo avvio", e)
+            false
+        }
 }

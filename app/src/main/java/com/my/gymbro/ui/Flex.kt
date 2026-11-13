@@ -20,7 +20,7 @@ fun inFlexMode(): Boolean {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() } ?: return false
     val tracker = remember(activity) { WindowInfoTracker.getOrCreate(activity) }
-    val info by remember(activity) { tracker.windowLayoutInfo(activity) }.collectAsStateWithLifecycle(initial = null)
+    val info by remember(activity) { tracker.windowLayoutInfo(activity) }.collectAsStateWithLifecycle(initialValue = null)
 
     val fold = info?.displayFeatures?.filterIsInstance<FoldingFeature>()?.firstOrNull()
     return fold != null &&

@@ -17,7 +17,7 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "com.my.gymbro"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.my.gymbro"
@@ -62,6 +62,12 @@ android {
     buildFeatures {
         compose = true
     }
+}
+
+// Storico degli schemi Room (app/schemas/<versione>.json), da tenere in git: serve per le
+// AutoMigration e per testare le migrazioni dalla prossima versione del database in poi.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

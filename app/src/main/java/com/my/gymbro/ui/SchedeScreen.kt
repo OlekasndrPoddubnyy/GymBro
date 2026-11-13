@@ -50,7 +50,7 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
         )
 
         is SchedeNav.Dettaglio -> {
-            val scheda by remember(n.schedaId) { vm.scheda(n.schedaId) }.collectAsStateWithLifecycle(initial = null)
+            val scheda by remember(n.schedaId) { vm.scheda(n.schedaId) }.collectAsStateWithLifecycle(initialValue = null)
             SchedaDettaglio(
                 scheda = scheda,
                 onIndietro = { nav = SchedeNav.Lista },
