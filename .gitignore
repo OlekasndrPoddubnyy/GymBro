@@ -1,0 +1,17 @@
+# Build / IDE
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Firma release: MAI nel repository (conservarne una copia di sicurezza altrove)
+keystore/
+keystore.properties
+*.jks
+*.keystore

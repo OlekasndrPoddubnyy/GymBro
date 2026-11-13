@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Manubrio bianco inclinato a 45°, centrato nella safe zone dell'adaptive icon -->
+    <group
+        android:rotation="45"
+        android:pivotX="54"
+        android:pivotY="54">
+
+        <!-- Barra -->
+        <path
+            android:pathData="M38,54 L70,54"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+
+        <!-- Piastre interne (grandi) -->
+        <path
+            android:pathData="M42,37 L42,71"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="9"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+        <path
+            android:pathData="M66,37 L66,71"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="9"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+
+        <!-- Piastre esterne (piccole) -->
+        <path
+            android:pathData="M31,44 L31,64"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+        <path
+            android:pathData="M77,44 L77,64"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+    </group>
+</vector>

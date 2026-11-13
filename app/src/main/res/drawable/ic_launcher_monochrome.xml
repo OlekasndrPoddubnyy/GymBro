@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Versione monocromatica (icone a tema di Android): stessa G, tutta bianca. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Anello aperto -->
+    <path
+        android:pathData="M69.2,38.8 A21.5,21.5 0 1,0 75.5,54"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="9.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <!-- Barra della G -->
+    <path
+        android:pathData="M57,54 L75.5,54"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="9.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <!-- Punto corallo -->
+    <path
+        android:pathData="M69.2,38.8 m-4.8,0 a4.8,4.8 0 1,0 9.6,0 a4.8,4.8 0 1,0 -9.6,0"
+        android:fillColor="#FFFFFFFF" />
+</vector>

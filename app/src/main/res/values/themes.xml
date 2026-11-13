@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.GymBro" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Splash screen di sistema (API 31+): sfondo scuro brand, al centro l'icona dell'app -->
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    </style>
+</resources>
