@@ -37,6 +37,14 @@ class Impostazioni(context: Context) {
         get() = prefs.getInt(CHIAVE_SCHEDE, prefs.getInt(CHIAVE_SEED, 0))
         set(v) = prefs.edit().putInt(CHIAVE_SCHEDE, v).apply()
 
+    /** Nomi degli esercizi predefiniti eliminati dall'utente: gli aggiornamenti del catalogo non li reinseriscono. */
+    val predefinitiEliminati: Set<String>
+        get() = prefs.getStringSet(CHIAVE_ELIMINATI, null)?.toSet() ?: emptySet()
+
+    fun segnaPredefinitoEliminato(nome: String) {
+        prefs.edit().putStringSet(CHIAVE_ELIMINATI, predefinitiEliminati + nome).apply()
+    }
+
     private fun leggiTema(): Tema =
         prefs.getString(CHIAVE_TEMA, null)
             ?.let { runCatching { Tema.valueOf(it) }.getOrNull() }
@@ -46,5 +54,6 @@ class Impostazioni(context: Context) {
         const val CHIAVE_TEMA = "tema"
         const val CHIAVE_SEED = "seed_version"
         const val CHIAVE_SCHEDE = "schede_version"
+        const val CHIAVE_ELIMINATI = "predefiniti_eliminati"
     }
 }

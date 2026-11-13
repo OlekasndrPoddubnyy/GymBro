@@ -38,13 +38,12 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
     val vm: SchedeViewModel = viewModel(factory = SchedeViewModel.Factory)
     val schede by vm.schede.collectAsStateWithLifecycle()
     val libreria by vm.libreria.collectAsStateWithLifecycle()
-    var nav by remember { mutableStateOf<SchedeNav>(SchedeNav.Lista) }
 
-    when (val n = nav) {
+    when (val n = vm.nav) {
         SchedeNav.Lista -> ListaSchede(
             schede = schede,
-            onNuova = { nav = SchedeNav.Editor(null) },
-            onApri = { nav = SchedeNav.Dettaglio(it.id) },
+            onNuova = { vm.apriEditor(null) },
+            onApri = { vm.apri(it.id) },
             onDuplica = { vm.duplica(it) },
             onElimina = { vm.elimina(it) }
         )
@@ -53,43 +52,30 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
             val scheda by remember(n.schedaId) { vm.scheda(n.schedaId) }.collectAsStateWithLifecycle(initialValue = null)
             SchedaDettaglio(
                 scheda = scheda,
-                onIndietro = { nav = SchedeNav.Lista },
-                onModifica = { nav = SchedeNav.Editor(n.schedaId) },
+                onIndietro = { vm.mostraLista() },
+                onModifica = { vm.apriEditor(n.schedaId) },
                 onInizia = { onAvviaAllenamento(n.schedaId) }
             )
         }
 
         is SchedeNav.Editor -> {
-            val schedaId = n.schedaId
-            var iniziale by remember(schedaId) {
-                mutableStateOf(if (schedaId == null) SchedaInModifica() else null)
-            }
-            LaunchedEffect(schedaId) {
-                if (schedaId != null) iniziale = vm.carica(schedaId) ?: SchedaInModifica()
-            }
-            val init = iniziale
-            if (init == null) {
+            val bozza = vm.bozza
+            if (bozza == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else {
                 SchedaEditorScreen(
-                    iniziale = init,
+                    stato = bozza,
+                    modificata = vm.bozzaModificata,
                     libreria = libreria,
-                    onSalva = { vm.salva(it) { nav = SchedeNav.Lista } },
-                    onAnnulla = {
-                        nav = if (schedaId == null) SchedeNav.Lista else SchedeNav.Dettaglio(schedaId)
-                    }
+                    onModifica = vm::modificaBozza,
+                    onSalva = vm::salvaBozza,
+                    onAnnulla = vm::chiudiEditor
                 )
             }
         }
     }
-}
-
-private sealed interface SchedeNav {
-    data object Lista : SchedeNav
-    data class Dettaglio(val schedaId: Long) : SchedeNav
-    data class Editor(val schedaId: Long?) : SchedeNav
 }
 
 @Composable

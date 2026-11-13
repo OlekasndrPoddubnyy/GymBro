@@ -1,11 +1,7 @@
 package com.my.gymbro.ui
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -42,7 +38,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import com.my.gymbro.TimerService
 import com.my.gymbro.ui.theme.Inchiostro
 import kotlin.math.PI
@@ -54,17 +49,13 @@ fun TimerScreen() {
     val context = LocalContext.current
     // Beep e vibrazione li riproduce il TimerService (funzionano anche su altre schermate o in background)
 
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    LaunchedEffect(Unit) {
-        val concesso = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!concesso) permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
+    val chiediNotifiche = rememberRichiestaNotifiche()
 
     if (stato.fase == FaseTimer.CONFIG) {
         ConfigTimer(
             stato = stato,
             onAvvia = {
+                chiediNotifiche()
                 TimerEngine.avvia()
                 TimerService.start(context)
             }

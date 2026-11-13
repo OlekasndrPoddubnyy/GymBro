@@ -73,6 +73,27 @@ private fun EsecuzioneAttiva(
 ) {
     val libreria by vm.libreria.collectAsStateWithLifecycle()
     var mostraSostituzione by remember { mutableStateOf(false) }
+    var confermaTermina by remember { mutableStateOf(false) }
+
+    if (confermaTermina) {
+        val fatte = stato.log.size
+        AlertDialog(
+            onDismissRequest = { confermaTermina = false },
+            title = { Text("Terminare l'allenamento?") },
+            text = {
+                Text(
+                    if (fatte == 0) "Non hai ancora registrato nessuna serie: l'allenamento non verrà salvato."
+                    else "Hai registrato $fatte serie. Le serie rimanenti non verranno fatte e l'allenamento non si potrà riprendere."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confermaTermina = false; vm.terminaOra() }) { Text("Termina") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confermaTermina = false }) { Text("Continua") }
+            }
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -87,7 +108,7 @@ private fun EsecuzioneAttiva(
             }
             BottoneSecondario(
                 testo = "Termina",
-                onClick = { vm.terminaOra() },
+                onClick = { confermaTermina = true },
                 contenitore = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.height(44.dp)
             )

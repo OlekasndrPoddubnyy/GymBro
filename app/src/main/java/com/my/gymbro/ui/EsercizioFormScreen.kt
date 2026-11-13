@@ -65,9 +65,25 @@ fun EsercizioFormScreen(
         }
     }
 
-    val annulla: () -> Unit = {
+    val scarta: () -> Unit = {
         puliziaInterim()
         onAnnulla()
+    }
+
+    val modificato = nome != (iniziale?.nome ?: "") ||
+        gruppo != (iniziale?.gruppoMuscolare ?: GruppoMuscolare.PETTO) ||
+        attrezzo != (iniziale?.attrezzatura ?: Attrezzatura.CORPO_LIBERO) ||
+        descrizione != (iniziale?.descrizione ?: "") ||
+        immaginePath != originale
+
+    // Indietro/freccia: se ci sono modifiche non salvate si chiede conferma prima di perderle.
+    var confermaUscita by rememberSaveable { mutableStateOf(false) }
+    val annulla: () -> Unit = { if (modificato) confermaUscita = true else scarta() }
+    if (confermaUscita) {
+        DialogoScartaModifiche(
+            onScarta = { confermaUscita = false; scarta() },
+            onContinua = { confermaUscita = false }
+        )
     }
 
     val salva: () -> Unit = {

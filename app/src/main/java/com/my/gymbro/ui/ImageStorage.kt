@@ -3,6 +3,7 @@ package com.my.gymbro.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
@@ -13,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import kotlin.math.roundToInt
 
 private const val PREFISSO_ASSET = "asset://"
 
@@ -24,16 +26,45 @@ private const val PREFISSO_ASSET = "asset://"
 object ImageStorage {
     private const val DIR = "exercise_images"
 
-    /** Copia l'immagine puntata da [uri] in un file interno e ne restituisce il percorso assoluto. */
+    /** Lato massimo (px) delle foto salvate: l'app non le mostra mai più grandi di così. */
+    private const val LATO_MAX = 1280
+    private const val QUALITA_JPEG = 88
+
+    /**
+     * Salva l'immagine puntata da [uri] in un file interno e ne restituisce il percorso assoluto.
+     * La foto viene ridotta a [LATO_MAX] px e ricompressa (una foto della fotocamera passa da
+     * diversi MB a poche centinaia di KB); ImageDecoder applica anche la rotazione EXIF, così le
+     * foto scattate in verticale non risultano girate. Se la decodifica fallisce si copia l'originale.
+     */
     suspend fun salva(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
         runCatching {
             val dir = File(context.filesDir, DIR).apply { mkdirs() }
             val file = File(dir, "${UUID.randomUUID()}.jpg")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                file.outputStream().use { output -> input.copyTo(output) }
-            } ?: return@runCatching null
+            val ridotta = runCatching { decodificaRidotta(context, uri) }.getOrNull()
+            if (ridotta != null) {
+                try {
+                    file.outputStream().use { ridotta.compress(Bitmap.CompressFormat.JPEG, QUALITA_JPEG, it) }
+                } finally {
+                    ridotta.recycle()
+                }
+            } else {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    file.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@runCatching null
+            }
             file.absolutePath
         }.getOrNull()
+    }
+
+    private fun decodificaRidotta(context: Context, uri: Uri): Bitmap {
+        val sorgente = ImageDecoder.createSource(context.contentResolver, uri)
+        return ImageDecoder.decodeBitmap(sorgente) { decoder, info, _ ->
+            val w = info.size.width
+            val h = info.size.height
+            val scala = minOf(1f, LATO_MAX.toFloat() / maxOf(w, h))
+            if (scala < 1f) decoder.setTargetSize((w * scala).roundToInt(), (h * scala).roundToInt())
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE // serve per poterla ricomprimere
+        }
     }
 
     /** Elimina il file immagine se presente; no-op per percorsi nulli/vuoti o asset dell'APK. */

@@ -20,11 +20,16 @@ class GymBroRepository(private val db: GymBroDatabase) {
      * Una descrizione predefinita viene aggiornata solo se quella salvata è ancora contenuta nella
      * nuova (es. aggiunta della riga "Technogym: …"): le descrizioni modificate dall'utente restano.
      * Tutto in un'unica transazione: se qualcosa va storto non resta un catalogo a metà.
+     * Gli esercizi predefiniti che l'utente ha eliminato ([eliminati], per nome) non vengono reinseriti.
      */
-    suspend fun assicuraEserciziPredefiniti(assetSlugs: Set<String> = emptySet()) = db.withTransaction {
+    suspend fun assicuraEserciziPredefiniti(
+        assetSlugs: Set<String> = emptySet(),
+        eliminati: Set<String> = emptySet(),
+    ) = db.withTransaction {
         val perNome = dao.tuttiEsercizi().associateBy { it.nome }
         val daInserire = mutableListOf<Esercizio>()
         for (seed in eserciziPredefiniti()) {
+            if (seed.nome in eliminati && seed.nome !in perNome) continue
             // Le cartelle proprie hanno la precedenza; altrimenti si riusa l'immagine indicata dal seed.
             val slug = slugEsercizio(seed.nome).takeIf { it in assetSlugs } ?: seed.immaginePath
             val pathAsset = if (slug != null && slug in assetSlugs) "asset://esercizi/$slug/0.jpg" else null
@@ -128,6 +133,8 @@ class GymBroRepository(private val db: GymBroDatabase) {
     suspend fun aggiungiEsercizio(e: Esercizio): Long = dao.insertEsercizio(e)
     suspend fun aggiornaEsercizio(e: Esercizio) = dao.updateEsercizio(e)
     suspend fun eliminaEsercizio(e: Esercizio) = dao.deleteEsercizio(e)
+    suspend fun schedeConEsercizio(id: Long): List<String> = dao.schedeConEsercizio(id)
+    suspend fun esercizioNelloStorico(id: Long): Boolean = dao.esercizioNelloStorico(id)
 
     // Schede
     suspend fun eliminaScheda(s: Scheda) = dao.deleteScheda(s)

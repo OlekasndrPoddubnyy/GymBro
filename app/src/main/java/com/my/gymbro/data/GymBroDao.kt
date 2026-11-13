@@ -18,6 +18,21 @@ interface GymBroDao {
     @Update suspend fun updateEsercizio(esercizio: Esercizio)
     @Delete suspend fun deleteEsercizio(esercizio: Esercizio)
 
+    /** Nomi delle schede che contengono l'esercizio (bloccano l'eliminazione). */
+    @Query(
+        """
+        SELECT DISTINCT s.nome FROM schede s
+        JOIN esercizi_scheda es ON es.schedaId = s.id
+        WHERE es.esercizioId = :esercizioId
+        ORDER BY s.nome
+        """
+    )
+    suspend fun schedeConEsercizio(esercizioId: Long): List<String>
+
+    /** true se l'esercizio compare nello storico degli allenamenti (anche questo blocca l'eliminazione). */
+    @Query("SELECT EXISTS(SELECT 1 FROM serie_eseguite WHERE esercizioId = :esercizioId)")
+    suspend fun esercizioNelloStorico(esercizioId: Long): Boolean
+
     // ---------- Schede ----------
     @Query("SELECT * FROM schede ORDER BY dataCreazione DESC")
     fun getSchede(): Flow<List<Scheda>>

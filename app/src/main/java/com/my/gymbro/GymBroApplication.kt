@@ -47,7 +47,7 @@ class GymBroApplication : Application() {
             if (aggiornaEsercizi) {
                 val ok = tenta("esercizi predefiniti") {
                     val slugs = assets.list("esercizi")?.toSet() ?: emptySet()
-                    repository.assicuraEserciziPredefiniti(slugs)
+                    repository.assicuraEserciziPredefiniti(slugs, impostazioni.predefinitiEliminati)
                 }
                 // Le schede cercano gli esercizi per nome: senza catalogo aggiornato si rimanda tutto.
                 if (!ok) return@launch

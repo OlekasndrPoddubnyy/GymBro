@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,9 @@ fun GymBroApp(
     var sezione by rememberSaveable { mutableStateOf(Sezione.ESERCIZI) }
     // false = allenamento ridotto: continua in sottofondo e si naviga nel resto dell'app
     var allenamentoAperto by rememberSaveable { mutableStateOf(false) }
+    // Stato salvabile di ogni sezione: creato prima del ramo "allenamento a schermo intero",
+    // così aprire e ridurre l'allenamento non fa perdere i form lasciati aperti.
+    val statoSezioni = rememberSaveableStateHolder()
     // L'allenamento vive in AllenamentoEngine (di processo): sopravvive anche alla ricreazione dell'Activity.
     val schedaInCorso by AllenamentoEngine.schedaInCorso.collectAsStateWithLifecycle()
     val app = LocalContext.current.applicationContext as GymBroApplication
@@ -54,6 +58,8 @@ fun GymBroApp(
     }
 
     val allenamentoInCorso by AllenamentoAttivo.info.collectAsStateWithLifecycle()
+    var avvisoInCorso by remember { mutableStateOf(false) }
+    val chiediNotifiche = rememberRichiestaNotifiche()
     val timer by TimerEngine.stato.collectAsStateWithLifecycle()
 
     val cs = MaterialTheme.colorScheme
@@ -106,20 +112,50 @@ fun GymBroApp(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Crossfade(targetState = sezione, animationSpec = tween(300), label = "sezione") { s ->
+              // Conserva lo stato "salvabile" di ogni sezione (campi dei form, scroll delle liste)
+              // quando si passa a un'altra sezione e poi si torna indietro.
+              statoSezioni.SaveableStateProvider(s.name) {
                 when (s) {
                     Sezione.TIMER -> TimerScreen()
                     Sezione.ESERCIZI -> EserciziScreen()
                     Sezione.SCHEDE -> SchedeScreen(
                         onAvviaAllenamento = { id ->
-                            // Se c'è già un allenamento in corso il motore lo ignora: si torna a quello.
-                            AllenamentoEngine.avvia(app, id)
-                            allenamentoAperto = true
+                            if (AllenamentoEngine.inEsecuzione && schedaInCorso != id) {
+                                // Un altro allenamento è già in corso: non lo si sostituisce in silenzio.
+                                avvisoInCorso = true
+                            } else {
+                                // Stessa scheda già in corso: il motore ignora l'avvio e si torna a quella.
+                                chiediNotifiche()
+                                AllenamentoEngine.avvia(app, id)
+                                allenamentoAperto = true
+                            }
                         }
                     )
                     Sezione.REPORT -> ReportScreen()
                 }
+              }
             }
         }
+    }
+
+    if (avvisoInCorso) {
+        val nome = allenamentoInCorso?.nomeScheda
+        AlertDialog(
+            onDismissRequest = { avvisoInCorso = false },
+            title = { Text("Allenamento già in corso") },
+            text = {
+                Text(
+                    "Stai già facendo " + (nome?.let { "\"$it\"" } ?: "un allenamento") +
+                        ". Riprendilo, oppure terminalo prima di iniziarne un altro."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { avvisoInCorso = false; allenamentoAperto = true }) { Text("Riprendi") }
+            },
+            dismissButton = {
+                TextButton(onClick = { avvisoInCorso = false }) { Text("Annulla") }
+            }
+        )
     }
 }
 

@@ -34,15 +34,19 @@ import com.my.gymbro.data.Modalita
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SchedaEditorScreen(
-    iniziale: SchedaInModifica,
+    stato: SchedaInModifica,
+    modificata: Boolean,
     libreria: List<Esercizio>,
-    onSalva: (SchedaInModifica) -> Unit,
+    onModifica: ((SchedaInModifica) -> SchedaInModifica) -> Unit,
+    onSalva: () -> Unit,
     onAnnulla: () -> Unit,
 ) {
-    var stato by remember(iniziale) { mutableStateOf(iniziale) }
+    // La bozza vive nel SchedeViewModel: le modifiche si applicano lì, sempre sull'ultima versione.
     var mostraPicker by remember { mutableStateOf(false) }
+    var confermaUscita by remember { mutableStateOf(false) }
 
-    fun aggiorna(blocco: (SchedaInModifica) -> SchedaInModifica) { stato = blocco(stato) }
+    fun aggiorna(blocco: (SchedaInModifica) -> SchedaInModifica) = onModifica(blocco)
+    val esci = { if (modificata) confermaUscita = true else onAnnulla() }
     fun aggiornaEsercizio(indice: Int, blocco: (EsercizioInScheda) -> EsercizioInScheda) {
         aggiorna { s -> s.copy(esercizi = s.esercizi.toMutableList().also { it[indice] = blocco(it[indice]) }) }
     }
@@ -52,25 +56,37 @@ fun SchedaEditorScreen(
         val da = stato.esercizi.indexOfFirst { it.uid == fromKey }
         val a = stato.esercizi.indexOfFirst { it.uid == toKey }
         if (da != -1 && a != -1 && da != a) {
-            aggiorna { s -> s.copy(esercizi = s.esercizi.toMutableList().also { it.add(a, it.removeAt(da)) }) }
+            aggiorna { s ->
+                val i = s.esercizi.indexOfFirst { it.uid == fromKey }
+                val j = s.esercizi.indexOfFirst { it.uid == toKey }
+                if (i == -1 || j == -1) s
+                else s.copy(esercizi = s.esercizi.toMutableList().also { it.add(j, it.removeAt(i)) })
+            }
             true
         } else false
     }
 
-    BackHandler(onBack = onAnnulla)
+    BackHandler(onBack = esci)
+
+    if (confermaUscita) {
+        DialogoScartaModifiche(
+            onScarta = { confermaUscita = false; onAnnulla() },
+            onContinua = { confermaUscita = false }
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
         // Header con back, titolo e salva
         IntestazioneDettaglio(
-            titolo = if (iniziale.id == 0L) "Crea allenamento" else "Modifica scheda",
-            sopratitolo = if (iniziale.id == 0L) "Nuova scheda" else stato.nome.ifBlank { "Scheda" },
-            onIndietro = onAnnulla,
+            titolo = if (stato.id == 0L) "Crea allenamento" else "Modifica scheda",
+            sopratitolo = if (stato.id == 0L) "Nuova scheda" else stato.nome.ifBlank { "Scheda" },
+            onIndietro = esci,
             iconaIndietro = Icons.Filled.Close,
             descrizioneIndietro = "Annulla"
         ) {
             BottoneSecondario(
                 testo = "Salva",
-                onClick = { if (stato.nome.isNotBlank()) onSalva(stato) },
+                onClick = onSalva,
                 icona = Icons.Filled.Check,
                 contenitore = if (stato.nome.isNotBlank()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                 contenuto = if (stato.nome.isNotBlank()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,

@@ -33,36 +33,26 @@ fun EserciziScreen() {
     val vm: EserciziViewModel = viewModel(factory = EserciziViewModel.Factory)
     val esercizi by vm.esercizi.collectAsStateWithLifecycle()
 
-    var editing by remember { mutableStateOf<EditState>(EditState.None) }
-
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
         vm.messaggi.collect { snackbar.showSnackbar(it) }
     }
 
-    when (val stato = editing) {
+    when (val stato = vm.editing) {
         EditState.None -> ListaEsercizi(
             esercizi = esercizi,
             snackbar = snackbar,
-            onAggiungi = { editing = EditState.Form(null) },
-            onModifica = { editing = EditState.Form(it) },
+            onAggiungi = { vm.apriForm(null) },
+            onModifica = { vm.apriForm(it) },
             onElimina = { vm.elimina(it) }
         )
 
         is EditState.Form -> EsercizioFormScreen(
             iniziale = stato.esercizio,
-            onSalva = {
-                vm.salva(it)
-                editing = EditState.None
-            },
-            onAnnulla = { editing = EditState.None }
+            onSalva = { vm.salva(it) },
+            onAnnulla = { vm.chiudiForm() }
         )
     }
-}
-
-private sealed interface EditState {
-    data object None : EditState
-    data class Form(val esercizio: Esercizio?) : EditState
 }
 
 @OptIn(ExperimentalFoundationApi::class)

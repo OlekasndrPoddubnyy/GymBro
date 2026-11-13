@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.FilledTonalIconButton
@@ -241,5 +243,17 @@ fun coloriRiposo(): ColoriRiposo {
         accentoTesto = Color(0xFFA8401A),
         traccia = Color(0x33E5784B),
         suAccento = Color(0xFF0D0E0B),
+    )
+}
+
+/** Conferma prima di uscire da un editor con modifiche non salvate. */
+@Composable
+fun DialogoScartaModifiche(onScarta: () -> Unit, onContinua: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onContinua,
+        title = { Text("Scartare le modifiche?") },
+        text = { Text("Hai modifiche non salvate: se esci andranno perse.") },
+        confirmButton = { TextButton(onClick = onScarta) { Text("Scarta") } },
+        dismissButton = { TextButton(onClick = onContinua) { Text("Continua a modificare") } }
     )
 }
