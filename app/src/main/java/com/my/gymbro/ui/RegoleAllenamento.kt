@@ -41,6 +41,9 @@ internal fun EsercizioEsec.sostituitoCon(nuovo: Esercizio) = copy(
     descrizione = nuovo.descrizione,
     note = null,
     gruppoMuscolare = nuovo.gruppoMuscolare,
+    // L'obiettivo di Gym Buddy era dell'esercizio sostituito.
+    obiettivo = null,
+    calibrazione = false,
     serie = serie.map { it.copy(pesoPianificato = null) },
 )
 

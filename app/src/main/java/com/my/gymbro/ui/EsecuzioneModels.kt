@@ -29,6 +29,8 @@ data class EsercizioEsec(
     val descrizione: String? = null,
     val note: String? = null,           // note di tecnica della scheda
     val gruppoMuscolare: com.my.gymbro.data.GruppoMuscolare? = null,
+    val obiettivo: com.my.gymbro.data.Obiettivo? = null, // ≠ null = Gym Buddy attivo
+    val calibrazione: Boolean = false,                  // carico ancora da confermare
 )
 
 data class StatoEsecuzione(

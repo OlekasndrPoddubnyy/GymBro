@@ -251,6 +251,7 @@ private fun SchedaDettaglio(
         ) {
             if (esercizi.isNotEmpty()) {
                 item(key = "riassunto") { RiassuntoTempo(stima, esercizi.size) }
+                item(key = "gymbuddy") { GymBuddyScheda(scheda) }
             }
             scheda.scheda.note?.takeIf { it.isNotBlank() }?.let { note ->
                 item {
@@ -319,6 +320,10 @@ private fun SchedaDettaglio(
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
+                            }
+                            // Lo stato è per esercizio: se compare due volte si mostra una volta sola.
+                            if (esercizi.indexOfFirst { it.esercizio.id == ec.esercizio.id } == i) {
+                                GymBuddyEsercizio(scheda, ec)
                             }
                         }
                     }

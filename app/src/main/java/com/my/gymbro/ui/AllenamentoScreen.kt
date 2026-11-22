@@ -352,7 +352,14 @@ private fun EsecuzioneSerie(stato: StatoEsecuzione, vm: AllenamentoViewModel) {
                 serie.ripetizioniPianificate?.takeIf { it.isNotBlank() }?.let { append("$it rip") }
                 serie.pesoPianificato?.let { if (isNotEmpty()) append(" · "); append("${formattaPeso(it)} kg") }
             }
-            if (pianificato.isNotBlank()) {
+            val obiettivo = es.obiettivo
+            if (obiettivo != null) {
+                Text(
+                    "Obiettivo: ${descriviObiettivo(obiettivo)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else if (pianificato.isNotBlank()) {
                 Text("Pianificato: $pianificato", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val passo = stato.indicePasso
@@ -523,6 +530,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                     TesseraStat("Volume", if (volume > 0) "${formattaPeso(volume.toFloat())} kg" else "—", Modifier.weight(1.3f))
                 }
             }
+            item { ProposteFineAllenamento(stato) }
 
             if (perEsercizio.isEmpty()) {
                 item { Text("Nessuna serie registrata.", color = MaterialTheme.colorScheme.onSurfaceVariant) }

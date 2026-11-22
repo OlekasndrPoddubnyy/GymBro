@@ -4,11 +4,17 @@ import android.content.Context
 import android.os.SystemClock
 import com.my.gymbro.GymBroApplication
 import com.my.gymbro.TimerService
+import com.my.gymbro.data.ChiaveBuddy
 import com.my.gymbro.data.Esercizio
 import com.my.gymbro.data.GymBroRepository
+import com.my.gymbro.data.MemoriaBuddy
 import com.my.gymbro.data.Modalita
+import com.my.gymbro.data.Obiettivo
+import com.my.gymbro.data.ProgressoBuddy
 import com.my.gymbro.data.SerieEseguita
+import com.my.gymbro.data.SerieFatta
 import com.my.gymbro.data.Sessione
+import com.my.gymbro.data.dopoAllenamento
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +66,10 @@ object AllenamentoEngine {
 
     private lateinit var repo: GymBroRepository
     private lateinit var appContext: Context
+    private lateinit var memoria: MemoriaBuddy
+
+    /** Serie previste e obiettivo all'avvio, per gli esercizi con Gym Buddy. */
+    private var pianoBuddy: Map<Long, Pair<Int, Obiettivo>> = emptyMap()
 
     private var sessioneId: Long = 0
     private var dataInizio: Long = 0
@@ -104,6 +114,8 @@ object AllenamentoEngine {
         if (inEsecuzione) return
         repo = app.repository
         appContext = app.applicationContext
+        memoria = app.memoriaBuddy
+        pianoBuddy = emptyMap()
         conto.ferma()
         caricamento?.cancel()
         sessioneId = 0
@@ -120,8 +132,12 @@ object AllenamentoEngine {
             val nome = completa?.scheda?.nome ?: "Allenamento"
             val esercizi = completa?.esercizi
                 ?.sortedBy { it.esercizioScheda.ordine }
-                ?.map { it.toEsecuzione() }
+                ?.map { it.toEsecuzione().conGymBuddy(idScheda) }
                 .orEmpty()
+            pianoBuddy = esercizi
+                .mapNotNull { es -> es.obiettivo?.let { es.esercizioId to it } }
+                .toMap()
+                .mapValues { (id, obiettivo) -> seriePerEsercizio(esercizi, id) to obiettivo }
 
             dataInizio = System.currentTimeMillis()
             sessioneId = repo.avviaSessione(
@@ -363,12 +379,53 @@ object AllenamentoEngine {
         val serie = serieCorrente ?: return this
         val occorrenza = esercizi.take(indiceEsercizio).count { it.esercizioId == es.esercizioId }
         val (rip, peso) = valoriIniziali(serie, prefill[es.esercizioId].orEmpty(), occorrenza)
-        return copy(ripInput = rip, pesoInput = peso)
+        val obiettivo = es.obiettivo ?: return copy(ripInput = rip, pesoInput = peso)
+        // Con Gym Buddy vale l'obiettivo. In calibrazione resta il carico appena corretto.
+        val corretto = if (es.calibrazione) log.lastOrNull { it.esercizioId == es.esercizioId }?.pesoKg else null
+        val carico = corretto ?: obiettivo.caricoKg
+        return copy(
+            ripInput = obiettivo.ripetizioni.toString(),
+            pesoInput = carico?.let(::formattaKgRuota) ?: peso,
+        )
+    }
+
+    private fun EsercizioEsec.conGymBuddy(schedaId: Long): EsercizioEsec {
+        if (modalita != Modalita.RIPETIZIONI) return this
+        val progresso = memoria.progresso(ChiaveBuddy(schedaId, esercizioId))?.takeIf { it.attivo } ?: return this
+        val buddy = progresso.stato ?: return this
+        return copy(obiettivo = buddy.obiettivo, calibrazione = buddy.calibrazione)
+    }
+
+    private fun seriePerEsercizio(esercizi: List<EsercizioEsec>, id: Long): Int =
+        esercizi.filter { it.esercizioId == id && it.modalita == Modalita.RIPETIZIONI }.sumOf { it.serie.size }
+
+    /** A fine allenamento aggiorna contatori e proposte. Gli obiettivi cambiano solo se l'utente accetta. */
+    private fun valutaGymBuddy() {
+        val schedaId = _schedaInCorso.value ?: return
+        val s = _stato.value
+        val nuovi = mutableMapOf<ChiaveBuddy, ProgressoBuddy>()
+        for ((id, piano) in pianoBuddy) {
+            val (previste, obiettivo) = piano
+            // Sostituito durante l'allenamento: non si può giudicare.
+            if (seriePerEsercizio(s.esercizi, id) != previste) continue
+            val chiave = ChiaveBuddy(schedaId, id)
+            val progresso = memoria.progresso(chiave) ?: continue
+            // Obiettivo cambiato nel frattempo: le serie erano fatte su quello vecchio.
+            if (progresso.stato?.obiettivo != obiettivo) continue
+            val fatte = s.log
+                .filter { it.esercizioId == id && it.durataSec == null }
+                .map { SerieFatta(it.ripetizioni ?: 0, it.pesoKg?.takeIf { kg -> kg > 0f }) }
+            val aggiornato = progresso.dopoAllenamento(previste, fatte)
+            if (aggiornato != progresso) nuovi[chiave] = aggiornato
+        }
+        memoria.salva(nuovi)
+        pianoBuddy = emptyMap() // una sola valutazione per allenamento
     }
 
     private fun terminaAllenamento() {
         conto.ferma()
         AllenamentoAttivo.aggiorna(null)
+        valutaGymBuddy()
         _stato.update { it.copy(fase = Fase.COMPLETATO, durataTotaleMs = System.currentTimeMillis() - dataInizio) }
         terminaSessioneDb()
     }

@@ -57,10 +57,11 @@ class GymBroRepository(private val db: GymBroDatabase) {
      *  - inserisce quelle che non esistono ancora (per nome);
      *  - quelle già presenti (stesso nome) vengono sostituite con la versione attuale.
      * Gli esercizi vengono cercati per nome nella libreria; quelli mancanti vengono saltati.
-     * Le schede create dall'utente non vengono mai toccate.
+     * Le schede create dall'utente non vengono mai toccate, e nemmeno quelle in cui ha sostituito
+     * un esercizio ([personalizzate]).
      * Tutto in un'unica transazione: o si aggiornano tutte le schede o nessuna.
      */
-    suspend fun assicuraSchedePredefinite() = db.withTransaction {
+    suspend fun assicuraSchedePredefinite(personalizzate: Set<Long> = emptySet()) = db.withTransaction {
         val schedePerNome = dao.tutteSchede().associateBy { it.nome }
         val perNome = dao.tuttiEsercizi().associateBy { it.nome }
         val adesso = System.currentTimeMillis()
@@ -68,7 +69,7 @@ class GymBroRepository(private val db: GymBroDatabase) {
         schedePredefinite().forEachIndexed { indice, template ->
             val esistente = schedePerNome[template.nome]
             if (esistente != null) {
-                aggiornaSchedaEsistente(esistente.id, template, perNome)
+                if (esistente.id !in personalizzate) aggiornaSchedaEsistente(esistente.id, template, perNome)
                 return@forEachIndexed
             }
             val righe = righeDaTemplate(template.esercizi, perNome)
@@ -147,6 +148,63 @@ class GymBroRepository(private val db: GymBroDatabase) {
 
     suspend fun caricaSchedaCompleta(id: Long): SchedaConEsercizi? =
         dao.getSchedaConEsercizi(id).first()
+
+    /**
+     * Mette [nuovoId] al posto di [vecchioId] nella scheda, con le stesse serie: cambiano il carico
+     * e le note, che valevano per l'esercizio sostituito. Lo storico non si tocca.
+     *
+     * @return ciò che serve per annullare; null se la scheda nel frattempo è cambiata.
+     */
+    suspend fun cambiaEsercizio(
+        schedaId: Long,
+        vecchioId: Long,
+        nuovoId: Long,
+        carico: Float?,
+    ): Precedente? = db.withTransaction {
+        val completa = dao.schedaConEserciziOra(schedaId) ?: return@withTransaction null
+        val ordinati = completa.esercizi.sortedBy { it.esercizioScheda.ordine }
+        val cambiati = ordinati.filter { it.esercizioScheda.esercizioId == vecchioId }
+        if (cambiati.isEmpty() || ordinati.any { it.esercizioScheda.esercizioId == nuovoId }) {
+            return@withTransaction null
+        }
+        if (dao.tuttiEsercizi().none { it.id == nuovoId }) return@withTransaction null
+
+        val righe = ordinati.map { ec ->
+            val serie = ec.serie.sortedBy { it.numero }
+            if (ec.esercizioScheda.esercizioId != vecchioId) ec.esercizioScheda to serie
+            else ec.esercizioScheda.copy(esercizioId = nuovoId, note = null) to serie.map { it.copy(pesoKg = carico) }
+        }
+        dao.salvaSchedaConEsercizi(completa.scheda, righe)
+        Precedente(
+            esercizioId = vecchioId,
+            note = cambiati.map { it.esercizioScheda.note },
+            pesi = cambiati.flatMap { ec -> ec.serie.sortedBy { it.numero }.map { it.pesoKg } },
+        )
+    }
+
+    /** Annulla [cambiaEsercizio], rimettendo note e pesi di prima. false = non è più possibile. */
+    suspend fun annullaCambio(schedaId: Long, nuovoId: Long, prima: Precedente): Boolean = db.withTransaction {
+        val completa = dao.schedaConEserciziOra(schedaId) ?: return@withTransaction false
+        val ordinati = completa.esercizi.sortedBy { it.esercizioScheda.ordine }
+        val presenti = ordinati.map { it.esercizioScheda.esercizioId }
+        if (nuovoId !in presenti || prima.esercizioId in presenti) return@withTransaction false
+        if (dao.tuttiEsercizi().none { it.id == prima.esercizioId }) return@withTransaction false
+
+        var indiceRiga = 0
+        var indiceSerie = 0
+        val righe = ordinati.map { ec ->
+            val serie = ec.serie.sortedBy { it.numero }
+            if (ec.esercizioScheda.esercizioId != nuovoId) {
+                ec.esercizioScheda to serie
+            } else {
+                val nota = prima.note.getOrNull(indiceRiga++)
+                val ripristinate = serie.map { it.copy(pesoKg = prima.pesi.getOrNull(indiceSerie++)) }
+                ec.esercizioScheda.copy(esercizioId = prima.esercizioId, note = nota) to ripristinate
+            }
+        }
+        dao.salvaSchedaConEsercizi(completa.scheda, righe)
+        true
+    }
 
     // Esecuzione / sessioni
     val sessioni: Flow<List<Sessione>> = dao.getSessioni()

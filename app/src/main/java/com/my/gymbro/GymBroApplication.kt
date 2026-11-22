@@ -5,6 +5,7 @@ import android.util.Log
 import com.my.gymbro.data.GymBroDatabase
 import com.my.gymbro.data.GymBroRepository
 import com.my.gymbro.data.Impostazioni
+import com.my.gymbro.data.MemoriaBuddy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ class GymBroApplication : Application() {
         GymBroRepository(GymBroDatabase.getInstance(this))
     }
     val impostazioni: Impostazioni by lazy { Impostazioni(this) }
+    val memoriaBuddy: MemoriaBuddy by lazy { MemoriaBuddy(this) }
 
     /** Scope di processo per il lavoro di avvio (non legato a nessuna schermata). */
     private val scopeApp = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -53,7 +55,10 @@ class GymBroApplication : Application() {
                 if (!ok) return@launch
                 impostazioni.versioneSeed = VERSIONE_ESERCIZI
             }
-            if (aggiornaSchede && tenta("schede predefinite") { repository.assicuraSchedePredefinite() }) {
+            val schedeAllineate = aggiornaSchede && tenta("schede predefinite") {
+                repository.assicuraSchedePredefinite(memoriaBuddy.schedePersonalizzate())
+            }
+            if (schedeAllineate) {
                 impostazioni.versioneSchede = VERSIONE_SCHEDE
             }
         }
