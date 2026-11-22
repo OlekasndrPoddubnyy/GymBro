@@ -20,15 +20,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.drop
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * Selettore a ruota in stile app Orologio iPhone: scorri verticalmente, l'elemento al centro
@@ -46,7 +49,7 @@ fun <T> RuotaPicker(
     val visibili = 3
     val altezzaItemPx = with(LocalDensity.current) { altezzaItem.toPx() }
 
-    val indiceIniziale = valori.indexOf(selezionato).coerceAtLeast(0)
+    val indiceIniziale = remember { valori.indexOf(selezionato).coerceAtLeast(0) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = indiceIniziale)
     val fling = rememberSnapFlingBehavior(lazyListState = listState)
 
@@ -57,10 +60,26 @@ fun <T> RuotaPicker(
         }
     }
 
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
-            valori.getOrNull(indiceCentrale)?.let { if (it != selezionato) onSelezione(it) }
+    val valoriAttuali by rememberUpdatedState(valori)
+    val selezionatoAttuale by rememberUpdatedState(selezionato)
+    val onSelezioneAttuale by rememberUpdatedState(onSelezione)
+    val ultimoScelto = remember { mutableStateOf<T?>(null) }
+
+    // Ruota → valore: solo quando il centro cambia (mai alla comparsa) e già durante lo scorrimento,
+    // così toccare Completa mentre la ruota gira salva il numero che si vede.
+    LaunchedEffect(listState) {
+        snapshotFlow { indiceCentrale }.drop(1).collect { i ->
+            val valore = valoriAttuali.getOrNull(i) ?: return@collect
+            ultimoScelto.value = valore
+            if (valore != selezionatoAttuale) onSelezioneAttuale(valore)
         }
+    }
+
+    // Valore → ruota: se il valore cambia da fuori ci si riallinea, senza interrompere chi sta scorrendo.
+    LaunchedEffect(selezionato) {
+        if (selezionato == ultimoScelto.value || listState.isScrollInProgress) return@LaunchedEffect
+        val indice = valori.indexOf(selezionato)
+        if (indice >= 0) listState.scrollToItem(indice)
     }
 
     Box(modifier.height(altezzaItem * visibili), contentAlignment = Alignment.Center) {
@@ -109,7 +128,7 @@ fun RuotaTempo(secondi: Int, onChange: (Int) -> Unit, modifier: Modifier = Modif
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         RuotaPicker(
-            valori = (0..30).toList(),
+            valori = remember { (0..30).toList().conValore(minuti) },
             selezionato = minuti,
             onSelezione = { onChange(it * 60 + sec) },
             modifier = Modifier.width(60.dp),
@@ -126,15 +145,14 @@ fun RuotaTempo(secondi: Int, onChange: (Int) -> Unit, modifier: Modifier = Modif
     }
 }
 
-private val PESI: List<Float> = (0..600).map { it * 0.5f } // 0..300 kg, passo 0.5
+private val PESI: List<Float> = (0..1000).map { it * 0.5f } // 0..500 kg, passo 0.5
 
-/** Ruota per il peso in kg (passo 0,5). */
+/** Ruota per il peso in kg (passo 0,5). Un peso fuori passo o fuori scala viene mostrato com'è. */
 @Composable
 fun RuotaPeso(peso: Float, onChange: (Float) -> Unit, modifier: Modifier = Modifier) {
-    val corrente = ((peso / 0.5f).roundToInt() * 0.5f).coerceIn(0f, 300f)
     RuotaPicker(
-        valori = PESI,
-        selezionato = corrente,
+        valori = remember { PESI.conValore(peso) },
+        selezionato = peso,
         onSelezione = onChange,
         modifier = modifier.width(96.dp),
         etichetta = { formattaKgRuota(it) }

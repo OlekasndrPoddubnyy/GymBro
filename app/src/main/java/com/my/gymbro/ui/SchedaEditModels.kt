@@ -112,6 +112,10 @@ fun SchedaInModifica.toEntities(): Pair<Scheda, List<Pair<EsercizioScheda, List<
     return scheda to righe
 }
 
+/** Nomi degli esercizi della bozza che non sono più in libreria ([idPresenti]): impediscono il salvataggio. */
+internal fun SchedaInModifica.eserciziMancanti(idPresenti: Set<Long>): List<String> =
+    esercizi.filter { it.esercizio.id !in idPresenti }.map { it.esercizio.nome }.distinct()
+
 /** Assegna un id di gruppo (>= 1) alle sequenze di esercizi collegati in superset; -1 = nessun gruppo. */
 private fun calcolaGruppiSuperset(esercizi: List<EsercizioInScheda>): IntArray {
     val n = esercizi.size

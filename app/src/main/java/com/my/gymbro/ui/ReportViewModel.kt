@@ -39,7 +39,7 @@ enum class MetricaTrend(val label: String) {
 }
 
 data class BarraValore(val etichetta: String, val valore: Double)
-data class RecordEsercizio(val nome: String, val pesoMax: Float?, val ripMax: Int?, val e1rm: Float?)
+data class RecordEsercizio(val id: Long, val nome: String, val pesoMax: Float?, val ripMax: Int?, val e1rm: Float?)
 data class PuntoAndamento(val dataMs: Long, val valore: Float)
 data class EsercizioRef(val id: Long, val nome: String)
 data class EsercizioStorico(val nome: String, val serie: List<String>)
@@ -141,6 +141,7 @@ internal fun calcola(
     sel: Long?,
     periodo: PeriodoReport,
     metrica: MetricaTrend,
+    oggi: LocalDate = LocalDate.now(),
 ): ReportState {
     // Contano solo le sessioni con almeno una serie registrata: un allenamento aperto e chiuso
     // subito (o abbandonato prima della prima serie) non è un allenamento fatto e non deve gonfiare
@@ -148,7 +149,6 @@ internal fun calcola(
     val conSerie = righe.mapTo(HashSet()) { it.sessioneId }
     val sessioni = tutteLeSessioni.filter { it.id in conSerie }
 
-    val oggi = LocalDate.now()
     val settimanaCorrente = inizioSettimana(oggi)
 
     // Filtro periodo
@@ -162,7 +162,8 @@ internal fun calcola(
     val giorniTutti = sessioni.groupingBy { giornoDi(it.dataInizio) }.eachCount()
     val settimaneAllenate = giorniTutti.keys.map { inizioSettimana(it) }.toSet()
     var streak = 0
-    var wk = settimanaCorrente
+    // La settimana in corso non interrompe la serie finché non è finita: se è ancora vuota si parte dalla scorsa.
+    var wk = if (settimanaCorrente in settimaneAllenate) settimanaCorrente else settimanaCorrente.minusWeeks(1)
     while (wk in settimaneAllenate) { streak++; wk = wk.minusWeeks(1) }
 
     var migliorStreak = 0
@@ -209,13 +210,14 @@ internal fun calcola(
 
     // ---- PR con 1RM stimato (Epley) (periodo) ----
     val pr = righeF.groupBy { it.esercizioId }
-        .map { (_, rs) ->
+        .map { (id, rs) ->
             val e1rm = rs.mapNotNull { r ->
                 val p = r.pesoKg ?: return@mapNotNull null
                 val rip = r.ripetizioni ?: return@mapNotNull null
                 if (rip <= 0) null else p * (1f + rip / 30f)
             }.maxOrNull()
             RecordEsercizio(
+                id = id,
                 nome = rs.first().nomeEsercizio,
                 pesoMax = rs.mapNotNull { it.pesoKg }.maxOrNull(),
                 ripMax = rs.mapNotNull { it.ripetizioni }.maxOrNull(),

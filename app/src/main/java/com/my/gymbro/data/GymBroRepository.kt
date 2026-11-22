@@ -152,7 +152,7 @@ class GymBroRepository(private val db: GymBroDatabase) {
     val sessioni: Flow<List<Sessione>> = dao.getSessioni()
 
     suspend fun avviaSessione(s: Sessione): Long = dao.insertSessione(s)
-    suspend fun terminaSessione(s: Sessione) = dao.updateSessione(s)
+    suspend fun terminaSessione(id: Long, fine: Long) = dao.chiudiSessione(id, fine)
     suspend fun registraSerie(s: SerieEseguita): Long = dao.insertSerieEseguita(s)
 
     /** Elimina una sessione senza serie (allenamento chiuso prima di farne anche solo una). */

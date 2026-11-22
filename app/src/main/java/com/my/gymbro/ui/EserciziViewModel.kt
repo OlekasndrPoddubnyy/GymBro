@@ -67,6 +67,7 @@ class EserciziViewModel(
         val motivo = when {
             schede.size == 1 -> "è nella scheda \"${schede[0]}\". Toglilo prima da lì."
             schede.size > 1 -> "è nelle schede ${schede.joinToString(", ") { "\"$it\"" }}. Toglilo prima da lì."
+            AllenamentoEngine.usaEsercizio(esercizio.id) -> "fa parte dell'allenamento in corso. Terminalo prima."
             repo.esercizioNelloStorico(esercizio.id) -> "compare nello storico dei tuoi allenamenti."
             else -> null
         }

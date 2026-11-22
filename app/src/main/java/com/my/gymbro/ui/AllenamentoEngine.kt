@@ -1,6 +1,7 @@
 package com.my.gymbro.ui
 
 import android.content.Context
+import android.os.SystemClock
 import com.my.gymbro.GymBroApplication
 import com.my.gymbro.TimerService
 import com.my.gymbro.data.Esercizio
@@ -40,6 +41,7 @@ object AllenamentoEngine {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val conto = ContoAllaRovescia(scope, AllenamentoAttivo::segnala)
+    private val doppioTocco = AntiDoppioTocco { SystemClock.elapsedRealtime() }
 
     private val _stato = MutableStateFlow(StatoEsecuzione())
     val stato: StateFlow<StatoEsecuzione> = _stato.asStateFlow()
@@ -51,6 +53,10 @@ object AllenamentoEngine {
     /** true se c'è un allenamento avviato e non ancora completato. */
     val inEsecuzione: Boolean
         get() = _schedaInCorso.value != null && _stato.value.fase != Fase.COMPLETATO
+
+    /** true se l'allenamento in corso usa l'esercizio [id]: finché è così non si può eliminare. */
+    fun usaEsercizio(id: Long): Boolean = inEsecuzione &&
+        _stato.value.let { s -> s.esercizi.any { it.esercizioId == id } || s.log.any { it.esercizioId == id } }
 
     private lateinit var repo: GymBroRepository
     private lateinit var appContext: Context
@@ -105,6 +111,7 @@ object AllenamentoEngine {
         passi = emptyList()
         completati.clear()
         saltati.clear()
+        doppioTocco.azzera()
         _stato.value = StatoEsecuzione()
         _schedaInCorso.value = idScheda
 
@@ -113,21 +120,7 @@ object AllenamentoEngine {
             val nome = completa?.scheda?.nome ?: "Allenamento"
             val esercizi = completa?.esercizi
                 ?.sortedBy { it.esercizioScheda.ordine }
-                ?.map { ec ->
-                    EsercizioEsec(
-                        esercizioId = ec.esercizio.id,
-                        nome = ec.esercizio.nome,
-                        modalita = ec.esercizioScheda.modalita,
-                        gruppo = ec.esercizioScheda.gruppoSuperset,
-                        immaginePath = ec.esercizio.immaginePath,
-                        descrizione = ec.esercizio.descrizione,
-                        note = ec.esercizioScheda.note,
-                        gruppoMuscolare = ec.esercizio.gruppoMuscolare,
-                        serie = ec.serie.sortedBy { it.numero }.map { sp ->
-                            SerieEsec(sp.numero, sp.durataSec, sp.ripetizioni, sp.pesoKg, sp.recuperoSec)
-                        }.ifEmpty { listOf(SerieEsec(1, null, null, null, 60)) }
-                    )
-                }
+                ?.map { it.toEsecuzione() }
                 .orEmpty()
 
             dataInizio = System.currentTimeMillis()
@@ -175,24 +168,33 @@ object AllenamentoEngine {
 
     // ---------- azioni utente ----------
 
-    fun aggiornaRip(v: String) = _stato.update { it.copy(ripInput = v.filter(Char::isDigit)) }
-    fun aggiornaPeso(v: String) = _stato.update { it.copy(pesoInput = v.filter { c -> c.isDigit() || c == '.' }) }
+    // [passo] è la serie per cui la ruota è stata mostrata: un valore in ritardo non finisce sulla successiva.
+    fun aggiornaRip(passo: Int, v: String) = _stato.update {
+        if (it.indicePasso == passo) it.copy(ripInput = v.filter(Char::isDigit)) else it
+    }
 
-    /** Sostituisce l'esercizio [indice] con [nuovo] dalla libreria, mantenendo serie e modalità.
+    fun aggiornaPeso(passo: Int, v: String) = _stato.update {
+        if (it.indicePasso == passo) it.copy(pesoInput = v.filter { c -> c.isDigit() || c == '.' }) else it
+    }
+
+    /** Sostituisce l'esercizio [indice] con [nuovo] dalla libreria, mantenendo serie e modalità e
+     *  proponendo i valori dell'ultima volta che si è fatto [nuovo].
      *  Vale solo per questa sessione: la scheda salvata non viene toccata. */
     fun sostituisci(indice: Int, nuovo: Esercizio) {
-        _stato.update { s ->
-            val es = s.esercizi.getOrNull(indice) ?: return@update s
-            s.copy(esercizi = s.esercizi.toMutableList().also {
-                it[indice] = es.copy(
-                    esercizioId = nuovo.id,
-                    nome = nuovo.nome,
-                    immaginePath = nuovo.immaginePath,
-                    descrizione = nuovo.descrizione,
-                    note = null, // le note di tecnica erano dell'esercizio sostituito
-                    gruppoMuscolare = nuovo.gruppoMuscolare
+        if (!inEsecuzione) return
+        val sessione = sessioneId
+        scope.launch {
+            val ultime = repo.prefillEsercizio(nuovo.id, sessione)
+            if (!inEsecuzione || sessione != sessioneId) return@launch
+            val prima = _stato.value.esercizi.getOrNull(indice) ?: return@launch
+            if (prima.esercizioId == nuovo.id) return@launch
+            prefill = prefill + (nuovo.id to ultime)
+            _stato.update { s ->
+                val cambiato = s.copy(
+                    esercizi = s.esercizi.toMutableList().also { it[indice] = it[indice].sostituitoCon(nuovo) }
                 )
-            })
+                if (indice == s.indiceEsercizio) cambiato.conValoriIniziali() else cambiato
+            }
         }
     }
 
@@ -208,10 +210,16 @@ object AllenamentoEngine {
         if (_stato.value.fase == Fase.RECUPERO) iniziaPasso()
     }
 
-    /** Conferma la serie corrente registrando i valori effettivi. */
+    /** Tocco su "Completa". */
     fun completaSerie() {
+        if (_stato.value.fase != Fase.ESECUZIONE || !doppioTocco.accetta()) return
+        registraPasso()
+    }
+
+    /** Registra la serie corrente con i valori effettivi (tocco dell'utente o tempo scaduto). */
+    private fun registraPasso() {
         val s = _stato.value
-        if (!s.pronta || s.fase == Fase.COMPLETATO) return
+        if (!s.pronta || s.fase != Fase.ESECUZIONE) return
         val passo = passi.getOrNull(s.indicePasso) ?: return
         val es = s.esercizi.getOrNull(passo.idxEsercizio) ?: return
         val serie = es.serie.getOrNull(passo.idxSerie) ?: return
@@ -222,20 +230,24 @@ object AllenamentoEngine {
             numero = serie.numero,
             ripetizioni = if (es.modalita == Modalita.RIPETIZIONI) s.ripInput.toIntOrNull() else null,
             pesoKg = if (es.modalita == Modalita.RIPETIZIONI) s.pesoInput.toFloatOrNull() else null,
-            durataSec = if (es.modalita == Modalita.TEMPO) serie.durataSec else null,
+            durataSec = if (es.modalita == Modalita.TEMPO) {
+                durataEseguita(serie.durataSec, s.secondiRimanenti, s.secondiTrascorsi)
+            } else null,
             completata = true
         )
         // Scope di processo: il salvataggio non si perde se la UI se ne va subito dopo.
         scope.launch { repo.registraSerie(eseguita) }
         completati += s.indicePasso
         saltati -= s.indicePasso
-        _stato.update { it.copy(log = it.log + eseguita) }
+        _stato.update {
+            it.copy(log = it.log + eseguita, nomiEseguiti = it.nomiEseguiti + (es.esercizioId to es.nome))
+        }
         avanza(saltato = false)
     }
 
     /** Salta la serie/passo corrente senza registrarla. */
     fun saltaSerie() {
-        if (!inEsecuzione) return
+        if (!inEsecuzione || _stato.value.fase != Fase.ESECUZIONE || !doppioTocco.accetta()) return
         conto.ferma()
         val cur = _stato.value.indicePasso
         if (cur !in completati) saltati += cur
@@ -284,12 +296,19 @@ object AllenamentoEngine {
         val passo = passi.getOrNull(s.indicePasso) ?: return terminaAllenamento()
         val es = s.esercizi.getOrNull(passo.idxEsercizio) ?: return terminaAllenamento()
         val serie = es.serie.getOrNull(passo.idxSerie) ?: return terminaAllenamento()
-        val (rip, peso) = prefillPer(es, passo.idxSerie, serie)
-        _stato.update { it.copy(fase = Fase.ESECUZIONE, ripInput = rip, pesoInput = peso, secondiRimanenti = 0) }
-        if (es.modalita == Modalita.TEMPO) {
-            avviaCountdown(serie.durataSec ?: 0) { completaSerie() }
-        } else {
-            conto.ferma()
+        _stato.update {
+            it.copy(fase = Fase.ESECUZIONE, secondiRimanenti = 0, secondiTotali = 0, secondiTrascorsi = 0)
+                .conValoriIniziali()
+        }
+        val durata = serie.durataSec ?: 0
+        when {
+            es.modalita != Modalita.TEMPO -> conto.ferma()
+            durata > 0 -> avviaCountdown(durata) {
+                doppioTocco.segna()
+                registraPasso()
+            }
+            // Senza durata la serie la chiude l'utente, come il lavoro libero del Timer.
+            else -> conto.avviaInAvanti { t -> _stato.update { it.copy(secondiTrascorsi = t) } }
         }
     }
 
@@ -338,13 +357,13 @@ object AllenamentoEngine {
         }
     }
 
-    private fun prefillPer(es: EsercizioEsec, idxSerie: Int, serie: SerieEsec): Pair<String, String> {
-        val ultima = prefill[es.esercizioId]?.getOrNull(idxSerie)
-        val rip = ultima?.ripetizioni?.toString()
-            ?: serie.ripetizioniPianificate?.let(::ultimoNumero).orEmpty()
-        val peso = ultima?.pesoKg?.let(::formattaPesoVm)
-            ?: serie.pesoPianificato?.let(::formattaPesoVm).orEmpty()
-        return rip to peso
+    /** Lo stato con ripetizioni e peso proposti per la sua serie corrente. */
+    private fun StatoEsecuzione.conValoriIniziali(): StatoEsecuzione {
+        val es = esercizioCorrente ?: return this
+        val serie = serieCorrente ?: return this
+        val occorrenza = esercizi.take(indiceEsercizio).count { it.esercizioId == es.esercizioId }
+        val (rip, peso) = valoriIniziali(serie, prefill[es.esercizioId].orEmpty(), occorrenza)
+        return copy(ripInput = rip, pesoInput = peso)
     }
 
     private fun terminaAllenamento() {
@@ -362,14 +381,8 @@ object AllenamentoEngine {
             scope.launch { repo.scartaSessioneVuota(id) }
             return
         }
-        val sessione = Sessione(
-            id = sessioneId,
-            schedaId = _schedaInCorso.value,
-            nomeScheda = _stato.value.nomeScheda,
-            dataInizio = dataInizio,
-            dataFine = System.currentTimeMillis()
-        )
-        scope.launch { repo.terminaSessione(sessione) }
+        val fine = System.currentTimeMillis()
+        scope.launch { repo.terminaSessione(id, fine) }
     }
 
     /** Conto alla rovescia della fase corrente, con i secondi pubblicati nello stato. */
@@ -427,10 +440,3 @@ internal fun costruisciPassi(esercizi: List<EsercizioEsec>): List<Passo> {
     }
     return passi
 }
-
-/** Ultimo gruppo di cifre in una stringa tipo "8-12" → "12". */
-private fun ultimoNumero(s: String): String =
-    Regex("\\d+").findAll(s).lastOrNull()?.value ?: ""
-
-private fun formattaPesoVm(kg: Float): String =
-    if (kg % 1f == 0f) kg.toInt().toString() else kg.toString()

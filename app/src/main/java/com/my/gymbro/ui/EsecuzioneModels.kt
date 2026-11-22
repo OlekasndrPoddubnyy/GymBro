@@ -45,11 +45,17 @@ data class StatoEsecuzione(
     val fase: Fase = Fase.PREPARAZIONE,
     val secondiRimanenti: Int = 0,
     val secondiTotali: Int = 0,
+    val secondiTrascorsi: Int = 0,                     // serie a tempo libero: conta in avanti
     val ripInput: String = "",
     val pesoInput: String = "",
     val log: List<SerieEseguita> = emptyList(),
+    val nomiEseguiti: Map<Long, String> = emptyMap(),  // nomi del log: restano anche dopo una sostituzione
     val durataTotaleMs: Long = 0,
 ) {
     val esercizioCorrente: EsercizioEsec? get() = esercizi.getOrNull(indiceEsercizio)
     val serieCorrente: SerieEsec? get() = esercizioCorrente?.serie?.getOrNull(indiceSerie)
+
+    /** Serie a tempo senza durata: si conta in avanti finché non si tocca Completa. */
+    val lavoroLibero: Boolean
+        get() = esercizioCorrente?.modalita == Modalita.TEMPO && (serieCorrente?.durataSec ?: 0) <= 0
 }

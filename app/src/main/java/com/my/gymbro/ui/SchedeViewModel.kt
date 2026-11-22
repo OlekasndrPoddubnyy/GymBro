@@ -17,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -53,6 +54,12 @@ class SchedeViewModel(private val repo: GymBroRepository) : ViewModel() {
 
     val bozzaModificata: Boolean get() = bozza != null && bozza != originale
 
+    /** Perché l'ultimo salvataggio non è riuscito (null = nessun problema). */
+    var erroreSalvataggio by mutableStateOf<String?>(null)
+        private set
+
+    fun chiudiErroreSalvataggio() { erroreSalvataggio = null }
+
     fun mostraLista() { nav = SchedeNav.Lista }
     fun apri(id: Long) { nav = SchedeNav.Dettaglio(id) }
 
@@ -85,6 +92,13 @@ class SchedeViewModel(private val repo: GymBroRepository) : ViewModel() {
         val s = bozza ?: return
         if (s.nome.isBlank() || salvataggio?.isActive == true) return
         salvataggio = viewModelScope.launch {
+            // La bozza resta aperta cambiando sezione: intanto un suo esercizio può essere stato eliminato.
+            val mancanti = s.eserciziMancanti(repo.esercizi.first().mapTo(HashSet()) { it.id })
+            if (mancanti.isNotEmpty()) {
+                erroreSalvataggio = "Non sono più in libreria: ${mancanti.joinToString(", ") { "\"$it\"" }}. " +
+                    "Rimuovili dalla scheda e salva di nuovo."
+                return@launch
+            }
             val (scheda, righe) = s.toEntities()
             repo.salvaScheda(scheda, righe)
             bozza = null

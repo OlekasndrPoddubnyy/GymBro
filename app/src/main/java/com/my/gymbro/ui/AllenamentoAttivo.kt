@@ -41,7 +41,12 @@ fun descriviEsecuzione(s: StatoEsecuzione): String {
         Fase.ESECUZIONE -> {
             val nome = es?.nome ?: "Esercizio"
             val serie = es?.let { " · serie ${s.indiceSerie + 1}/${it.serie.size}" }.orEmpty()
-            if (es?.modalita == com.my.gymbro.data.Modalita.TEMPO) "$nome · $tempo" else "$nome$serie"
+            when {
+                // Il nome resta fuori dalla stringa di formato: può contenere "%".
+                s.lavoroLibero -> "$nome · " + "+%d:%02d".format(s.secondiTrascorsi / 60, s.secondiTrascorsi % 60)
+                es?.modalita == com.my.gymbro.data.Modalita.TEMPO -> "$nome · $tempo"
+                else -> "$nome$serie"
+            }
         }
         Fase.RECUPERO -> "Riposo · $tempo"
         Fase.ATTESA -> "Prossimo: ${es?.nome ?: "esercizio"}"

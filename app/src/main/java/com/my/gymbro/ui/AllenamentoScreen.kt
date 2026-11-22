@@ -38,6 +38,8 @@ import com.my.gymbro.data.Modalita
 import com.my.gymbro.data.SerieEseguita
 import java.util.concurrent.TimeUnit
 
+private val RIPETIZIONI_RUOTA = (0..200).toList()
+
 @Composable
 fun AllenamentoScreen(
     onRiduci: () -> Unit,
@@ -72,7 +74,8 @@ private fun EsecuzioneAttiva(
     onEsci: () -> Unit,
 ) {
     val libreria by vm.libreria.collectAsStateWithLifecycle()
-    var mostraSostituzione by remember { mutableStateOf(false) }
+    // L'esercizio si fissa all'apertura: mentre si sceglie, una serie a tempo può finire e passare al successivo.
+    var daSostituire by remember { mutableStateOf<Int?>(null) }
     var confermaTermina by remember { mutableStateOf(false) }
 
     if (confermaTermina) {
@@ -149,12 +152,12 @@ private fun EsecuzioneAttiva(
 
                 Fase.ESECUZIONE -> {
                     EsecuzioneSerie(stato, vm)
-                    TextButton(onClick = { mostraSostituzione = true }) { Text("Sostituisci esercizio") }
+                    TextButton(onClick = { daSostituire = stato.indiceEsercizio }) { Text("Sostituisci esercizio") }
                 }
 
                 Fase.RECUPERO -> {
                     Etichetta("Riposo", riposo.accentoTesto)
-                    Cronometro(stato.secondiRimanenti, inRecupero = true)
+                    Cronometro(stato.secondiRimanenti, avvisaFine = false)
                     stato.esercizioCorrente?.let { es ->
                         Row(
                             Modifier.fillMaxWidth(),
@@ -198,7 +201,7 @@ private fun EsecuzioneAttiva(
                         BottoneSecondario("Salta", { vm.saltaEsercizio() }, Modifier.weight(1f))
                         BottonePrincipale("Inizia", { vm.iniziaProssimo() }, Modifier.weight(1f), icona = Icons.Filled.PlayArrow)
                     }
-                    TextButton(onClick = { mostraSostituzione = true }) { Text("Sostituisci esercizio") }
+                    TextButton(onClick = { daSostituire = stato.indiceEsercizio }) { Text("Sostituisci esercizio") }
                 }
 
                 Fase.COMPLETATO -> Unit
@@ -215,14 +218,14 @@ private fun EsecuzioneAttiva(
         }
     }
 
-    if (mostraSostituzione) {
+    daSostituire?.let { indice ->
         SostituzioneSheet(
             libreria = libreria,
             onScelto = { es ->
-                vm.sostituisci(stato.indiceEsercizio, es)
-                mostraSostituzione = false
+                vm.sostituisci(indice, es)
+                daSostituire = null
             },
-            onDismiss = { mostraSostituzione = false }
+            onDismiss = { daSostituire = null }
         )
     }
 }
@@ -333,7 +336,16 @@ private fun EsecuzioneSerie(stato: StatoEsecuzione, vm: AllenamentoViewModel) {
 
     when (es.modalita) {
         Modalita.TEMPO -> {
-            Cronometro(stato.secondiRimanenti)
+            if (stato.lavoroLibero) {
+                Cronometro(stato.secondiTrascorsi, avvisaFine = false)
+                Text(
+                    "Tocca Completa quando hai finito",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Cronometro(stato.secondiRimanenti)
+            }
         }
         Modalita.RIPETIZIONI -> {
             val pianificato = buildString {
@@ -343,22 +355,27 @@ private fun EsecuzioneSerie(stato: StatoEsecuzione, vm: AllenamentoViewModel) {
             if (pianificato.isNotBlank()) {
                 Text("Pianificato: $pianificato", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Ripetizioni", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RuotaPicker(
-                        valori = (0..50).toList(),
-                        selezionato = stato.ripInput.toIntOrNull() ?: 0,
-                        onSelezione = { vm.aggiornaRip(it.toString()) },
-                        modifier = Modifier.width(72.dp)
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Peso (kg)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RuotaPeso(
-                        peso = stato.pesoInput.toFloatOrNull() ?: 0f,
-                        onChange = { vm.aggiornaPeso(formattaKgRuota(it)) }
-                    )
+            val passo = stato.indicePasso
+            // Ruote nuove a ogni serie: con recupero 0 la schermata resta la stessa e terrebbero i numeri di prima.
+            key(passo, es.esercizioId) {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Ripetizioni", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val rip = stato.ripInput.toIntOrNull() ?: 0
+                        RuotaPicker(
+                            valori = remember { RIPETIZIONI_RUOTA.conValore(rip) },
+                            selezionato = rip,
+                            onSelezione = { vm.aggiornaRip(passo, it.toString()) },
+                            modifier = Modifier.width(72.dp)
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Peso (kg)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        RuotaPeso(
+                            peso = stato.pesoInput.toFloatOrNull() ?: 0f,
+                            onChange = { vm.aggiornaPeso(passo, formattaKgRuota(it)) }
+                        )
+                    }
                 }
             }
         }
@@ -380,11 +397,11 @@ private fun Etichetta(testo: String, colore: Color = MaterialTheme.colorScheme.p
 }
 
 @Composable
-private fun Cronometro(secondi: Int, inRecupero: Boolean = false) {
+private fun Cronometro(secondi: Int, avvisaFine: Boolean = true) {
     Text(
         formattaTempo(secondi),
         style = MaterialTheme.typography.displayLarge,
-        color = if (secondi in 1..3 && !inRecupero) MaterialTheme.colorScheme.error else LocalContentColor.current
+        color = if (secondi in 1..3 && avvisaFine) MaterialTheme.colorScheme.error else LocalContentColor.current
     )
 }
 
@@ -481,7 +498,6 @@ private fun FotoEsercizio(es: EsercizioEsec) {
 
 @Composable
 private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
-    val nomi = remember(stato.esercizi) { stato.esercizi.associate { it.esercizioId to it.nome } }
     val perEsercizio = remember(stato.log) { stato.log.groupBy { it.esercizioId } }
     val volume = remember(stato.log) {
         stato.log.sumOf { ((it.pesoKg ?: 0f) * (it.ripetizioni ?: 0)).toDouble() }
@@ -523,7 +539,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                     elevation = elevazioneCard()
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(nomi[id] ?: "Esercizio", style = MaterialTheme.typography.titleMedium)
+                        Text(stato.nomiEseguiti[id] ?: "Esercizio", style = MaterialTheme.typography.titleMedium)
                         serie.sortedBy { it.numero }.forEach { se ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(

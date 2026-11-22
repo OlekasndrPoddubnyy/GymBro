@@ -24,8 +24,8 @@ class AllenamentoViewModel(repo: GymBroRepository) : ViewModel() {
     val libreria: StateFlow<List<Esercizio>> =
         repo.esercizi.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun aggiornaRip(v: String) = AllenamentoEngine.aggiornaRip(v)
-    fun aggiornaPeso(v: String) = AllenamentoEngine.aggiornaPeso(v)
+    fun aggiornaRip(passo: Int, v: String) = AllenamentoEngine.aggiornaRip(passo, v)
+    fun aggiornaPeso(passo: Int, v: String) = AllenamentoEngine.aggiornaPeso(passo, v)
     fun sostituisci(indice: Int, nuovo: Esercizio) = AllenamentoEngine.sostituisci(indice, nuovo)
     fun saltaPreparazione() = AllenamentoEngine.saltaPreparazione()
     fun iniziaProssimo() = AllenamentoEngine.iniziaProssimo()

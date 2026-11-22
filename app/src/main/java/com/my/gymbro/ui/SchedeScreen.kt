@@ -11,7 +11,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.Edit
-import com.my.gymbro.data.EsercizioSchedaCompleto
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -72,6 +71,14 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
                     onModifica = vm::modificaBozza,
                     onSalva = vm::salvaBozza,
                     onAnnulla = vm::chiudiEditor
+                )
+            }
+            vm.erroreSalvataggio?.let { errore ->
+                AlertDialog(
+                    onDismissRequest = vm::chiudiErroreSalvataggio,
+                    title = { Text("Scheda non salvata") },
+                    text = { Text(errore) },
+                    confirmButton = { TextButton(onClick = vm::chiudiErroreSalvataggio) { Text("OK") } }
                 )
             }
         }
@@ -235,7 +242,7 @@ private fun SchedaDettaglio(
         }
 
         val esercizi = scheda.esercizi.sortedBy { it.esercizioScheda.ordine }
-        val stima = remember(esercizi) { stimaTempi(esercizi) }
+        val stima = remember(esercizi) { stimaTempi(esercizi.map { it.toEsecuzione() }) }
 
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -264,7 +271,7 @@ private fun SchedaDettaglio(
                     elevation = elevazioneCard()
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-                        // Foto (animata inizio/fine): tocca per ingrandire e vedere i muscoli coinvolti
+                        // Foto: tocca per vederla animata e ingrandita, con i muscoli coinvolti
                         MiniaturaEsercizio(
                             nome = ec.esercizio.nome,
                             path = ec.esercizio.immaginePath,
@@ -329,36 +336,6 @@ private fun SchedaDettaglio(
             )
         }
     }
-}
-
-/** Stima dei tempi di una scheda, in secondi. */
-private data class StimaTempi(val lavoroSec: Int, val recuperoSec: Int, val serie: Int) {
-    val totaleSec: Int get() = lavoroSec + recuperoSec
-}
-
-/** Secondi stimati per una serie a ripetizioni (non ha una durata pianificata). */
-private const val SEC_SERIE_RIPETIZIONI = 40
-/** Secondi stimati per il cambio tra un esercizio e il successivo. */
-private const val SEC_CAMBIO_ESERCIZIO = 45
-
-private fun stimaTempi(esercizi: List<EsercizioSchedaCompleto>): StimaTempi {
-    var lavoro = 0
-    var recupero = 0
-    var serie = 0
-    esercizi.forEach { ec ->
-        val ordinate = ec.serie.sortedBy { it.numero }
-        ordinate.forEachIndexed { i, sp ->
-            serie++
-            lavoro += when (ec.esercizioScheda.modalita) {
-                Modalita.TEMPO -> sp.durataSec ?: 0
-                Modalita.RIPETIZIONI -> SEC_SERIE_RIPETIZIONI
-            }
-            // il recupero dopo l'ultima serie dell'ultimo esercizio non conta
-            if (!(ec === esercizi.last() && i == ordinate.lastIndex)) recupero += sp.recuperoSec
-        }
-    }
-    recupero += (esercizi.size - 1).coerceAtLeast(0) * SEC_CAMBIO_ESERCIZIO
-    return StimaTempi(lavoro, recupero, serie)
 }
 
 @Composable

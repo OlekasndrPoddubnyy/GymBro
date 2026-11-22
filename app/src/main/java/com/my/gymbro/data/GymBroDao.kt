@@ -84,7 +84,14 @@ interface GymBroDao {
 
     // ---------- Sessioni / serie eseguite ----------
     @Insert suspend fun insertSessione(sessione: Sessione): Long
-    @Update suspend fun updateSessione(sessione: Sessione)
+
+    /**
+     * Segna la fine della sessione [id]. Tocca solo dataFine: riscrivere tutta la riga rimetterebbe
+     * uno schedaId non più valido se nel frattempo la scheda è stata eliminata (FK SET_NULL).
+     */
+    @Query("UPDATE sessioni SET dataFine = :fine WHERE id = :id")
+    suspend fun chiudiSessione(id: Long, fine: Long)
+
     @Insert suspend fun insertSerieEseguita(serie: SerieEseguita): Long
 
     /** Cancella la sessione [id] solo se non ha nessuna serie registrata. */
@@ -101,8 +108,8 @@ interface GymBroDao {
 
     /**
      * Serie realmente eseguite per [esercizioId] nell'ultima sessione che lo conteneva
-     * (esclusa [sessioneCorrente]), ordinate per numero. Alimenta la pre-compilazione
-     * (sovraccarico progressivo).
+     * (esclusa [sessioneCorrente]), ordinate per numero e poi per esecuzione. Alimenta la
+     * pre-compilazione (sovraccarico progressivo).
      */
     @Query(
         """
@@ -115,7 +122,7 @@ interface GymBroDao {
             ORDER BY s2.dataInizio DESC
             LIMIT 1
           )
-        ORDER BY se.numero
+        ORDER BY se.numero, se.id
         """
     )
     suspend fun ultimeSerieEseguite(esercizioId: Long, sessioneCorrente: Long): List<SerieEseguita>

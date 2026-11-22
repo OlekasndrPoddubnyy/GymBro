@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
@@ -17,6 +18,16 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 private const val PREFISSO_ASSET = "asset://"
+
+private const val CACHE_IMMAGINI_KB = 24 * 1024
+
+/**
+ * Immagini già decodificate, per dimensione e percorso. I percorsi non cambiano mai contenuto
+ * (asset dell'APK o file con nome casuale), quindi non serve invalidarla.
+ */
+private val cacheImmagini = object : LruCache<String, ImageBitmap>(CACHE_IMMAGINI_KB) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4 / 1024
+}
 
 /**
  * Salvataggio delle immagini degli esercizi nello storage interno dell'app.
@@ -82,16 +93,18 @@ object ImageStorage {
 @Composable
 fun rememberImmagine(path: String?, maxDim: Int = 512): ImageBitmap? {
     val context = LocalContext.current
-    return produceState<ImageBitmap?>(initialValue = null, path, maxDim) {
+    val chiave = "$maxDim|$path"
+    // Se è già in cache si mostra subito, senza un fotogramma vuoto.
+    return produceState<ImageBitmap?>(initialValue = cacheImmagini.get(chiave), path, maxDim) {
         value = if (path.isNullOrBlank()) null
-        else withContext(Dispatchers.IO) {
+        else cacheImmagini.get(chiave) ?: withContext(Dispatchers.IO) {
             runCatching {
                 val bmp = if (path.startsWith(PREFISSO_ASSET)) {
                     decodeAssetRicampionata(context, path.removePrefix(PREFISSO_ASSET), maxDim)
                 } else {
                     decodeRicampionata(path, maxDim)
                 }
-                bmp?.asImageBitmap()
+                bmp?.asImageBitmap()?.also { cacheImmagini.put(chiave, it) }
             }.getOrNull()
         }
     }.value

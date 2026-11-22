@@ -187,7 +187,7 @@ private fun EsercizioCard(
             Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Foto animata inizio/fine: tocca la miniatura per ingrandirla e vedere i muscoli coinvolti
+            // Foto ferma: tocca la miniatura per vederla animata e ingrandita, con i muscoli coinvolti
             MiniaturaLibreria(e, Modifier.size(60.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {

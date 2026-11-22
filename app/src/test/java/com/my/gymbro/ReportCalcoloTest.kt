@@ -8,6 +8,8 @@ import com.my.gymbro.ui.PeriodoReport
 import com.my.gymbro.ui.calcola
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 class ReportCalcoloTest {
 
@@ -51,5 +53,40 @@ class ReportCalcoloTest {
         assertEquals(0, stato.sessioniTotali)
         assertEquals(0, stato.allenamentiSettimana)
         assertEquals(0, stato.settimaneConsecutive)
+    }
+
+    private val lunedi = LocalDate.of(2026, 11, 23)
+
+    private fun mezzogiorno(giorno: LocalDate) =
+        giorno.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    private fun streakDiLunedi(vararg giorniFa: Long): Int {
+        val date = giorniFa.map { mezzogiorno(lunedi.minusDays(it)) }
+        val sessioni = date.mapIndexed { i, d -> Sessione(id = i + 1L, nomeScheda = "A", dataInizio = d) }
+        val righe = date.mapIndexed { i, d -> riga(i + 1L, d) }
+        return calcola(righe, sessioni, null, PeriodoReport.TUTTO, MetricaTrend.PESO, oggi = lunedi)
+            .settimaneConsecutive
+    }
+
+    @Test
+    fun settimanaInCorsoAncoraVuota_nonAzzeraLeSettimaneDiFila() {
+        assertEquals(2, streakDiLunedi(3, 10))
+    }
+
+    @Test
+    fun settimanaInCorsoGiaAllenata_conta() {
+        assertEquals(3, streakDiLunedi(0, 3, 10))
+    }
+
+    @Test
+    fun unaSettimanaInteraSaltata_azzera() {
+        assertEquals(0, streakDiLunedi(10, 17))
+    }
+
+    @Test
+    fun eserciziOmonimi_hannoRecordConIdDiversi() {
+        val righe = listOf(riga(1, ieri), riga(1, ieri).copy(esercizioId = 2))
+        val stato = calcolaTutto(righe, listOf(Sessione(id = 1, nomeScheda = "A", dataInizio = ieri)))
+        assertEquals(setOf(1L, 2L), stato.pr.map { it.id }.toSet())
     }
 }

@@ -41,6 +41,9 @@ import com.my.gymbro.data.GruppoMuscolare
 import com.my.gymbro.ui.theme.Inchiostro
 import kotlinx.coroutines.delay
 
+/** Lato massimo (px) delle miniature: una foto 850×567 scende a 425×283, nitida fino a 72 dp. */
+private const val DIM_MINIATURA = 450
+
 /** Le immagini predefinite hanno due fasi: posizione iniziale (0.jpg) e finale (1.jpg). */
 private fun fasiImmagine(path: String?): List<String> = when {
     path.isNullOrBlank() -> emptyList()
@@ -51,6 +54,8 @@ private fun fasiImmagine(path: String?): List<String> = when {
 /**
  * Immagine dell'esercizio. Per gli esercizi predefiniti alterna in automatico posizione iniziale e
  * finale (effetto "animazione" del movimento), con un'etichetta INIZIO/FINE.
+ * Con [animata] = false mostra solo la posizione iniziale: è il caso delle miniature, che in un
+ * elenco terrebbero occupata la CPU anche a schermo fermo.
  * Se non c'è immagine mostra [segnaposto] (o niente).
  */
 @Composable
@@ -60,9 +65,11 @@ fun ImmagineEsercizioAnimata(
     rapportoAspetto: Float = 16f / 9f,
     mostraEtichetta: Boolean = true,
     intervalloMs: Long = 1200,
+    animata: Boolean = true,
+    maxDim: Int = 900,
     segnaposto: (@Composable () -> Unit)? = null,
 ) {
-    val fasi = remember(path) { fasiImmagine(path) }
+    val fasi = remember(path, animata) { fasiImmagine(path).let { if (animata) it else it.take(1) } }
     val forma = RoundedCornerShape(20.dp)
     if (fasi.isEmpty()) {
         if (segnaposto != null) {
@@ -87,7 +94,7 @@ fun ImmagineEsercizioAnimata(
 
     Box(modifier.fillMaxWidth().aspectRatio(rapportoAspetto).clip(forma).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Crossfade(targetState = fase, animationSpec = tween(350), label = "faseImmagine") { i ->
-            val bmp = rememberImmagine(fasi[i], maxDim = 900)
+            val bmp = rememberImmagine(fasi.getOrNull(i), maxDim = maxDim)
             if (bmp != null) {
                 Image(
                     bitmap = bmp,
@@ -114,7 +121,7 @@ fun ImmagineEsercizioAnimata(
     }
 }
 
-/** Miniatura quadrata (anche lei animata tra inizio e fine) che si apre a tutto schermo al tocco. */
+/** Miniatura quadrata ferma: al tocco apre la foto grande animata tra inizio e fine. */
 @Composable
 fun MiniaturaEsercizio(
     nome: String,
@@ -130,7 +137,8 @@ fun MiniaturaEsercizio(
         path = path,
         rapportoAspetto = 1f,
         mostraEtichetta = false,
-        intervalloMs = 1500,
+        animata = false,
+        maxDim = DIM_MINIATURA,
         segnaposto = segnaposto,
         modifier = modifier.clip(RoundedCornerShape(14.dp)).clickable { aperta = true }
     )
@@ -198,7 +206,7 @@ fun DialogoEsercizio(
 }
 
 /**
- * Miniatura per gli elenchi: foto animata (inizio/fine) o sigla del gruppo.
+ * Miniatura per gli elenchi: foto ferma (posizione iniziale) o sigla del gruppo.
  * Con [cliccabile] = true il tocco apre l'anteprima grande; false quando è la riga a gestire il tocco.
  */
 @Composable
@@ -224,7 +232,8 @@ fun MiniaturaLibreria(es: Esercizio, modifier: Modifier = Modifier.size(56.dp), 
             path = es.immaginePath,
             rapportoAspetto = 1f,
             mostraEtichetta = false,
-            intervalloMs = 1500,
+            animata = false,
+            maxDim = DIM_MINIATURA,
             segnaposto = segnaposto,
             modifier = modifier.clip(RoundedCornerShape(14.dp))
         )

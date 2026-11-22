@@ -77,13 +77,14 @@ fun ReportScreen() {
             if (stato.pr.isEmpty()) {
                 item { Text("Nessun record nel periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            items(stato.pr, key = { it.nome }) { PrRow(it, Modifier.animateItem()) }
+            // Chiavi con prefisso: id di esercizi e di sessioni si sovrappongono nella stessa lista.
+            items(stato.pr, key = { "pr_${it.id}" }) { PrRow(it, Modifier.animateItem()) }
 
             item { TitoloSezione("Storico", Modifier.padding(top = 8.dp)) }
             if (stato.storico.isEmpty()) {
                 item { Text("Nessuna sessione nel periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            items(stato.storico, key = { it.id }) { v ->
+            items(stato.storico, key = { "sessione_${it.id}" }) { v ->
                 StoricoRow(v, onClick = { sessioneAperta = v }, modifier = Modifier.animateItem())
             }
         }
