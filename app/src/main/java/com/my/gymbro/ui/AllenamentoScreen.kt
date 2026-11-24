@@ -445,10 +445,10 @@ private fun Etichetta(testo: String, colore: Color = MaterialTheme.colorScheme.p
 
 @Composable
 private fun Cronometro(secondi: Int, avvisaFine: Boolean = true) {
-    Text(
+    NumeriInchiostro(
         formattaTempo(secondi),
-        style = MaterialTheme.typography.displayLarge,
-        color = if (secondi in 1..3 && avvisaFine) MaterialTheme.colorScheme.error else LocalContentColor.current
+        altezza = 68.dp,
+        colore = if (secondi in 1..3 && avvisaFine) MaterialTheme.colorScheme.error else LocalContentColor.current
     )
 }
 

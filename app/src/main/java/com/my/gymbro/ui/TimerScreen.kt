@@ -280,15 +280,15 @@ private fun InfoTimer(stato: StatoTimer, progresso: Float, recupero: Boolean, co
                         color = accento
                     )
                 }
-                Text(
+                NumeriInchiostro(
                     when {
                         preparazione -> "${stato.secondiRimanenti.coerceAtLeast(1)}"   // 3, 2, 1
                         libero -> formattaTimer(stato.secondiTrascorsi)              // conta in avanti
                         else -> formattaTimer(stato.secondiRimanenti)
                     },
-                    style = MaterialTheme.typography.displayLarge.copy(fontSize = if (compatto) 72.sp else 104.sp, lineHeight = if (compatto) 72.sp else 100.sp),
-                    color = if (ultimi3 && !recupero && !preparazione) cs.error else testo,
-                    modifier = Modifier.graphicsLayer { scaleX = scala; scaleY = scala }
+                    altezza = if (compatto) 80.dp else 116.dp,
+                    colore = if (ultimi3 && !recupero && !preparazione) cs.error else testo,
+                    modifier = Modifier.padding(vertical = 4.dp).graphicsLayer { scaleX = scala; scaleY = scala }
                 )
                 Text(
                     "Serie ${stato.serieCorrente + 1} di ${stato.serieTotali}",
