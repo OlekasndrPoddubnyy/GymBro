@@ -3,6 +3,7 @@ package com.my.gymbro.ui
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.text.DateFormat
 import java.text.SimpleDateFormat
+import java.time.format.TextStyle
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -38,6 +40,7 @@ fun ReportScreen() {
     val vm: ReportViewModel = viewModel(factory = ReportViewModel.Factory)
     val stato by vm.stato.collectAsStateWithLifecycle()
     var sessioneAperta by remember { mutableStateOf<VoceStorico?>(null) }
+    var storicoCompleto by rememberSaveable { mutableStateOf(false) }
 
     when {
         !stato.pronto -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -61,16 +64,12 @@ fun ReportScreen() {
         ) {
             item { FiltroPeriodo(stato.periodo, vm::setPeriodo) }
             item { Riepilogo(stato) }
-            item { SezioneCard("Costanza — ultime 14 settimane") { Heatmap(stato.heatmap) } }
+            item { SezioneCostanza(stato) }
             item { SezioneVolume(stato) }
             item { SezioneAndamento(stato, vm) }
 
             if (stato.distribuzioneMuscolare.isNotEmpty()) {
-                item {
-                    SezioneCard("Distribuzione muscolare (serie)") {
-                        BarreOrizzontali(stato.distribuzioneMuscolare)
-                    }
-                }
+                item { SezioneMuscoli(stato) }
             }
 
             item { TitoloSezione("Record personali", Modifier.padding(top = 8.dp)) }
@@ -84,8 +83,19 @@ fun ReportScreen() {
             if (stato.storico.isEmpty()) {
                 item { Text("Nessuna sessione nel periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            items(stato.storico, key = { "sessione_${it.id}" }) { v ->
+            val storicoVisibile = if (storicoCompleto) stato.storico else stato.storico.take(STORICO_INIZIALE)
+            items(storicoVisibile, key = { "sessione_${it.id}" }) { v ->
                 StoricoRow(v, onClick = { sessioneAperta = v }, modifier = Modifier.animateItem())
+            }
+            if (stato.storico.size > STORICO_INIZIALE) {
+                item(key = "storico_altro") {
+                    TextButton(
+                        onClick = { storicoCompleto = !storicoCompleto },
+                        modifier = Modifier.fillMaxWidth().animateItem()
+                    ) {
+                        Text(if (storicoCompleto) "Mostra meno" else "Mostra tutte (${stato.storico.size})")
+                    }
+                }
             }
         }
     }
@@ -94,6 +104,8 @@ fun ReportScreen() {
         DettaglioSessioneSheet(v, onDismiss = { sessioneAperta = null })
     }
 }
+
+private const val STORICO_INIZIALE = 5
 
 // ---------- filtro periodo ----------
 
@@ -108,84 +120,179 @@ private fun FiltroPeriodo(corrente: PeriodoReport, onSelezione: (PeriodoReport) 
 
 // ---------- riepilogo ----------
 
+private fun descriviPeriodo(p: PeriodoReport): String = when (p) {
+    PeriodoReport.TUTTO -> "da sempre"
+    PeriodoReport.M1 -> "ultimi 30 giorni"
+    PeriodoReport.M3 -> "ultimi 90 giorni"
+    PeriodoReport.A1 -> "ultimo anno"
+}
+
+/** Come si chiama il periodo precedente di pari durata, es. "30 giorni prima". */
+private fun descriviPeriodoPrima(p: PeriodoReport): String = when (p) {
+    PeriodoReport.TUTTO -> ""
+    PeriodoReport.M1 -> "30 giorni prima"
+    PeriodoReport.M3 -> "90 giorni prima"
+    PeriodoReport.A1 -> "anno prima"
+}
+
 @Composable
 private fun Riepilogo(stato: ReportState) {
     val cs = MaterialTheme.colorScheme
     Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer, border = bordoCard()) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    Sopratitolo("Volume totale")
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(compatto(stato.volumeTotale), style = MaterialTheme.typography.displayMedium, color = cs.primary)
-                        Text(" kg", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 6.dp))
-                    }
+            Column {
+                Sopratitolo("Volume totale · ${descriviPeriodo(stato.periodo)}")
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(compatto(stato.volumeTotale), style = MaterialTheme.typography.displayMedium, color = cs.primary)
+                    Text(" kg", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 6.dp))
                 }
-                if (stato.durataMediaMin > 0) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Sopratitolo("Durata media")
-                        Text("${stato.durataMediaMin} min", style = MaterialTheme.typography.headlineSmall)
-                    }
+                stato.confronto?.let {
+                    ConfrontoVolume(stato.volumeTotale, it, descriviPeriodoPrima(stato.periodo))
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TesseraStat("Sessioni", stato.numeroSessioni.toString(), Modifier.weight(1f))
-                TesseraStat("Giorni", stato.giorniAllenati.toString(), Modifier.weight(1f))
+                TesseraStat("Allenamenti", stato.numeroSessioni.toString(), Modifier.weight(1f))
+                TesseraStat("Giorni attivi", stato.giorniAllenati.toString(), Modifier.weight(1f))
                 TesseraStat("Serie", stato.serieTotali.toString(), Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TesseraStat("Sett. di fila", stato.settimaneConsecutive.toString(), Modifier.weight(1f), coloreValore = cs.primary)
-                TesseraStat("Record sett.", stato.migliorStreak.toString(), Modifier.weight(1f))
-                TesseraStat("Questa sett.", stato.allenamentiSettimana.toString(), Modifier.weight(1f))
+                TesseraStat(
+                    "Durata media",
+                    if (stato.durataMediaMs > 0) durataBreve(stato.durataMediaMs) else "—",
+                    Modifier.weight(1f)
+                )
+                val medio = if (stato.numeroSessioni > 0) stato.volumeTotale / stato.numeroSessioni else 0.0
+                TesseraStat(
+                    "Volume a seduta",
+                    if (medio > 0) "${compatto(medio)} kg" else "—",
+                    Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
-// ---------- heatmap costanza ----------
+/** "▲ 12% rispetto ai 30 giorni prima" (in lime se si sale), o quanti allenamenti c'erano prima. */
+@Composable
+private fun ConfrontoVolume(attuale: Double, prima: ConfrontoPeriodo, nomePrima: String) {
+    val cs = MaterialTheme.colorScheme
+    val articolo = if (nomePrima.startsWith("anno")) "all'" else "ai "
+    val (testo, colore) = when {
+        prima.volume <= 0.0 && attuale <= 0.0 -> return
+        prima.volume <= 0.0 ->
+            "Nessun volume " + (if (nomePrima.startsWith("anno")) "nell'" else "nei ") + nomePrima to cs.onSurfaceVariant
+        else -> {
+            val delta = ((attuale - prima.volume) / prima.volume * 100).roundToInt()
+            val rif = "rispetto $articolo$nomePrima"
+            when {
+                delta > 0 -> "▲ $delta% $rif" to cs.primary
+                delta < 0 -> "▼ ${-delta}% $rif" to cs.onSurfaceVariant
+                else -> "Stesso volume $rif" to cs.onSurfaceVariant
+            }
+        }
+    }
+    Text(testo, style = MaterialTheme.typography.labelLarge, color = colore)
+}
+
+// ---------- costanza ----------
+
+@Composable
+private fun SezioneCostanza(stato: ReportState) {
+    val cs = MaterialTheme.colorScheme
+    SezioneCard("Costanza") {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TesseraStat("Di fila", "${stato.settimaneConsecutive} sett.", Modifier.weight(1f), coloreValore = cs.primary)
+            TesseraStat("Record", "${stato.migliorStreak} sett.", Modifier.weight(1f))
+            TesseraStat("Questa sett.", stato.allenamentiSettimana.toString(), Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Settimane di fila con almeno un allenamento: la settimana in corso non interrompe la serie.",
+            style = MaterialTheme.typography.bodySmall,
+            color = cs.onSurfaceVariant
+        )
+        Spacer(Modifier.height(16.dp))
+        Heatmap(stato.heatmap)
+    }
+}
 
 @Composable
 private fun Heatmap(settimane: List<SettimanaAttivita>) {
     if (settimane.isEmpty()) return
-    val vuoto = MaterialTheme.colorScheme.surfaceVariant
-    val basso = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-    val alto = MaterialTheme.colorScheme.primaryContainer
+    val cs = MaterialTheme.colorScheme
+    val vuoto = cs.surfaceVariant
+    val basso = cs.primaryContainer.copy(alpha = 0.45f)
+    val alto = cs.primaryContainer
     val giorniLabel = listOf("L", "M", "M", "G", "V", "S", "D")
+    // Oggi = ultimo giorno non futuro dell'ultima settimana
+    val oggiIdx = settimane.last().giorni.indexOfLast { it != null }
+    val gap = 3.dp
+    val colonnaGiorni = 16.dp
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                giorniLabel.forEach { g ->
-                    Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-                        Text(g, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cella = ((maxWidth - colonnaGiorni - gap * settimane.size) / settimane.size).coerceAtMost(26.dp)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            // Nome del mese sopra la prima settimana di ciascuno
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                Spacer(Modifier.width(colonnaGiorni))
+                settimane.forEachIndexed { i, s ->
+                    Box(Modifier.width(cella).height(18.dp)) {
+                        if (i == 0 || s.inizio.month != settimane[i - 1].inizio.month) {
+                            Text(
+                                s.inizio.month.getDisplayName(TextStyle.SHORT, Locale.ITALIAN),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = cs.onSurfaceVariant,
+                                maxLines = 1,
+                                modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
+                            )
+                        }
                     }
                 }
             }
-            settimane.forEach { settimana ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    settimana.giorni.forEach { conteggio ->
+            giorniLabel.forEachIndexed { g, etichetta ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        etichetta,
+                        Modifier.width(colonnaGiorni),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = cs.onSurfaceVariant
+                    )
+                    settimane.forEachIndexed { w, settimana ->
+                        val conteggio = settimana.giorni[g]
                         val colore = when {
                             conteggio == null -> Color.Transparent
                             conteggio == 0 -> vuoto
                             conteggio == 1 -> basso
                             else -> alto
                         }
+                        val forma = RoundedCornerShape(4.dp)
+                        val oggi = w == settimane.lastIndex && g == oggiIdx
                         Box(
                             Modifier
-                                .size(14.dp)
-                                .clip(RoundedCornerShape(3.dp))
+                                .size(cella)
+                                .clip(forma)
                                 .background(colore)
+                                .then(if (oggi) Modifier.border(2.dp, cs.onSurface, forma) else Modifier)
                         )
                     }
                 }
             }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Meno", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(vuoto))
-            Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(basso))
-            Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(alto))
-            Text("Più", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Ultime ${settimane.size} settimane · bordo = oggi",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = cs.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Meno", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                    Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(vuoto))
+                    Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(basso))
+                    Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(alto))
+                    Text("Più", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                }
+            }
         }
     }
 }
@@ -209,8 +316,37 @@ private fun SezioneVolume(stato: ReportState) {
                 shape = SegmentedButtonDefaults.itemShape(1, 2)
             ) { Text("Mensile") }
         }
-        Spacer(Modifier.height(12.dp))
-        BarChart(if (mensile) stato.volumeMensile else stato.volumeSettimanale)
+        val barre = if (mensile) stato.volumeMensile else stato.volumeSettimanale
+        // Selezionata di default l'ultima barra (settimana o mese in corso)
+        var selezionata by rememberSaveable(mensile) {
+            mutableIntStateOf(barre.indexOfLast { it.valore > 0 }.takeIf { it >= 0 } ?: barre.lastIndex)
+        }
+        Spacer(Modifier.height(14.dp))
+        barre.getOrNull(selezionata)?.let { b ->
+            val inCorso = selezionata == barre.lastIndex
+            val nome = when {
+                mensile && inCorso -> "Questo mese"
+                mensile -> "Mese ${b.etichetta}"
+                inCorso -> "Questa settimana"
+                else -> "Settimana del ${b.etichetta}"
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                Text(nome, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (b.valore > 0) "${compatto(b.valore)} kg" else "nessun volume",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (b.valore > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        BarChart(barre, selezionata, onSeleziona = { selezionata = it })
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Tocca una barra per vederne il valore.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -261,7 +397,41 @@ private fun SezioneAndamento(stato: ReportState, vm: ReportViewModel) {
     }
 }
 
+// ---------- muscoli ----------
+
+@Composable
+private fun SezioneMuscoli(stato: ReportState) {
+    val cs = MaterialTheme.colorScheme
+    SezioneCard("Muscoli allenati") {
+        stato.muscoliPeriodo?.let { muscoli ->
+            Text(
+                "In pieno i muscoli che hai allenato di più nel periodo, più chiari gli altri (in base alle serie).",
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            MappaMuscoli(muscoli, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(18.dp))
+        }
+        Sopratitolo("Serie per gruppo")
+        Spacer(Modifier.height(8.dp))
+        BarreOrizzontali(stato.distribuzioneMuscolare)
+    }
+}
+
 // ---------- righe PR / storico ----------
+
+@Composable
+private fun EtichettaNuovo() {
+    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+        Text(
+            "NUOVO",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
 
 @Composable
 private fun PrRow(r: RecordEsercizio, modifier: Modifier = Modifier) {
@@ -272,15 +442,17 @@ private fun PrRow(r: RecordEsercizio, modifier: Modifier = Modifier) {
         elevation = elevazioneCard()
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(r.nome, style = MaterialTheme.typography.bodyLarge)
-                r.e1rm?.let {
-                    Text(
-                        "1RM stimato ~${formattaPeso(it)} kg",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(r.nome, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge)
+                    if (r.nuovo) EtichettaNuovo()
                 }
+                val stima = r.e1rm?.let { "1RM stimato ~${formattaPeso(it)} kg · " } ?: ""
+                Text(
+                    "${stima}fatto il ${dataBreve(r.dataMs)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Column(horizontalAlignment = Alignment.End) {
                 r.pesoMax?.let { Text("${formattaPeso(it)} kg", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary) }
@@ -308,16 +480,16 @@ private fun StoricoRow(v: VoceStorico, onClick: () -> Unit, modifier: Modifier =
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(v.nome, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(v.dataMs)),
+                        dataStorico(v.dataMs),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(2.dp))
-                val durata = if (v.durataMs > 0) formattaDurata(v.durataMs) else "—"
+                val durata = if (v.durataMs > 0) "${durataBreve(v.durataMs)} · " else ""
                 val volume = if (v.volume > 0) " · ${compatto(v.volume)} kg" else ""
                 Text(
-                    "Durata $durata · ${v.numSerie} serie$volume",
+                    "$durata${v.numSerie} serie · ${v.dettaglio.size} ${if (v.dettaglio.size == 1) "esercizio" else "esercizi"}$volume",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -390,26 +562,55 @@ private fun SezioneCard(titolo: String, content: @Composable ColumnScope.() -> U
 // ---------- grafici ----------
 
 @Composable
-private fun BarChart(barre: List<BarraValore>) {
+private fun BarChart(barre: List<BarraValore>, selezionata: Int, onSeleziona: (Int) -> Unit) {
+    val cs = MaterialTheme.colorScheme
     val max = barre.maxOfOrNull { it.valore } ?: 0.0
     Row(
         Modifier.fillMaxWidth().height(150.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        barre.forEach { b ->
+        barre.forEachIndexed { i, b ->
             val frac = if (max > 0) (b.valore / max).toFloat() else 0f
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(compatto(b.valore), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            val sel = i == selezionata
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSeleziona(i) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                // Valore solo sulle barre piene: tanti "0" erano solo rumore
+                if (b.valore > 0) {
+                    Text(
+                        compatto(b.valore),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (sel) cs.onSurface else cs.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height((4f + frac * 110f).dp)
+                        .height(if (b.valore > 0) (6f + frac * 104f).dp else 4.dp)
                         .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .background(
+                            when {
+                                b.valore <= 0 -> cs.surfaceVariant
+                                sel -> cs.primaryContainer
+                                else -> cs.primaryContainer.copy(alpha = 0.4f)
+                            }
+                        )
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(b.etichetta, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(
+                    b.etichetta,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (sel) cs.onSurface else cs.onSurfaceVariant,
+                    maxLines = 1
+                )
             }
         }
     }
@@ -523,4 +724,22 @@ private fun formattaPeso(kg: Float): String =
     if (kg % 1f == 0f) kg.toInt().toString() else "%.1f".format(kg)
 
 private fun dataBreve(ms: Long): String =
-    SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(ms))
+    SimpleDateFormat("d MMM", Locale.ITALIAN).format(Date(ms))
+
+/** Es. "dom 22 nov"; con l'anno se non è quello in corso. */
+private fun dataStorico(ms: Long): String {
+    val anno = SimpleDateFormat("yyyy", Locale.ITALIAN)
+    val stessoAnno = anno.format(Date(ms)) == anno.format(Date())
+    return SimpleDateFormat(if (stessoAnno) "EEE d MMM" else "d MMM yyyy", Locale.ITALIAN).format(Date(ms))
+}
+
+/** Es. "45 s", "52 min", "1 h 05". */
+private fun durataBreve(ms: Long): String {
+    val sec = TimeUnit.MILLISECONDS.toSeconds(ms)
+    val min = sec / 60
+    return when {
+        min < 1 -> "$sec s"
+        min < 60 -> "$min min"
+        else -> "%d h %02d".format(min / 60, min % 60)
+    }
+}

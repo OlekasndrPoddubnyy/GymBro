@@ -511,6 +511,9 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
     val volume = remember(stato.log) {
         stato.log.sumOf { ((it.pesoKg ?: 0f) * (it.ripetizioni ?: 0)).toDouble() }
     }
+    val confronto = confrontoConStorico(stato.log)
+    val record = confronto.values.count { it.record }
+    val muscoli = remember(stato.log, stato.esercizi) { muscoliAllenamento(stato) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LazyColumn(
@@ -526,13 +529,41 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TesseraStat("Durata", formattaDurataBreve(stato.durataTotaleMs), Modifier.weight(1f))
-                    TesseraStat("Serie", "${stato.log.size}", Modifier.weight(1f))
-                    TesseraStat("Volume", if (volume > 0) "${formattaPeso(volume.toFloat())} kg" else "—", Modifier.weight(1.3f))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TesseraStat("Durata", formattaDurataBreve(stato.durataTotaleMs), Modifier.weight(1f))
+                        TesseraStat("Esercizi", "${perEsercizio.size}", Modifier.weight(1f))
+                        TesseraStat("Serie", "${stato.log.size}", Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TesseraStat("Volume", if (volume > 0) "${formattaPeso(volume.toFloat())} kg" else "—", Modifier.weight(1.3f))
+                        TesseraStat(
+                            "Record",
+                            if (record > 0) "$record" else "—",
+                            Modifier.weight(1f),
+                            coloreValore = if (record > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
             item { ProposteFineAllenamento(stato) }
+
+            muscoli?.let { m ->
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = coloriCard(),
+                        border = bordoCard(),
+                        elevation = elevazioneCard()
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            TitoloSezione("Muscoli lavorati")
+                            MappaMuscoli(m, Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
 
             if (perEsercizio.isEmpty()) {
                 item { Text("Nessuna serie registrata.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -541,6 +572,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
             }
 
             items(perEsercizio.entries.toList()) { (id, serie) ->
+                val conf = confronto[id]
                 Card(
                     Modifier.fillMaxWidth().animateItem(),
                     shape = RoundedCornerShape(18.dp),
@@ -549,7 +581,17 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                     elevation = elevazioneCard()
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(stato.nomiEseguiti[id] ?: "Esercizio", style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stato.nomiEseguiti[id] ?: "Esercizio",
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            when {
+                                conf?.record == true -> EtichettaRiepilogo("RECORD", evidenziata = true)
+                                conf?.primaVolta == true -> EtichettaRiepilogo("PRIMA VOLTA", evidenziata = false)
+                            }
+                        }
                         serie.sortedBy { it.numero }.forEach { se ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -560,6 +602,24 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                                 )
                                 Text(descriviSerieEseguita(se), style = MaterialTheme.typography.bodyMedium)
                             }
+                        }
+                        // Volume dell'esercizio e confronto con l'ultima volta
+                        val volEs = serie.sumOf { ((it.pesoKg ?: 0f) * (it.ripetizioni ?: 0)).toDouble() }
+                        if (volEs > 0) {
+                            val delta = conf?.deltaVolume
+                            val confrontoTesto = when {
+                                delta == null -> ""
+                                delta > 0 -> " · ▲ ${formattaPeso(delta.toFloat())} kg rispetto all'ultima volta"
+                                delta < 0 -> " · ▼ ${formattaPeso(-delta.toFloat())} kg rispetto all'ultima volta"
+                                else -> " · come l'ultima volta"
+                            }
+                            Text(
+                                "Volume ${formattaPeso(volEs.toFloat())} kg$confrontoTesto",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (delta != null && delta > 0) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }
@@ -572,6 +632,18 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
             icona = Icons.Filled.Check,
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)
         )
+    }
+}
+
+@Composable
+private fun EtichettaRiepilogo(testo: String, evidenziata: Boolean) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = if (evidenziata) cs.primaryContainer else cs.surfaceContainerHigh,
+        contentColor = if (evidenziata) cs.onPrimaryContainer else cs.onSurfaceVariant
+    ) {
+        Text(testo, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
 

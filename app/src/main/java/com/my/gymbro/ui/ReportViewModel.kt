@@ -39,7 +39,15 @@ enum class MetricaTrend(val label: String) {
 }
 
 data class BarraValore(val etichetta: String, val valore: Double)
-data class RecordEsercizio(val id: Long, val nome: String, val pesoMax: Float?, val ripMax: Int?, val e1rm: Float?)
+data class RecordEsercizio(
+    val id: Long,
+    val nome: String,
+    val pesoMax: Float?,
+    val ripMax: Int?,
+    val e1rm: Float?,
+    val dataMs: Long,          // giorno in cui è stato fatto il record (miglior 1RM stimato, o peso max)
+    val nuovo: Boolean = false, // fatto negli ultimi 7 giorni
+)
 data class PuntoAndamento(val dataMs: Long, val valore: Float)
 data class EsercizioRef(val id: Long, val nome: String)
 data class EsercizioStorico(val nome: String, val serie: List<String>)
@@ -53,8 +61,11 @@ data class VoceStorico(
     val dettaglio: List<EsercizioStorico>,
 )
 
-/** Una colonna del calendario-attività: 7 giorni (lun→dom); null = giorno futuro. */
-data class SettimanaAttivita(val giorni: List<Int?>)
+/** Una colonna del calendario-attività: 7 giorni (lun→dom) dal lunedì [inizio]; null = giorno futuro. */
+data class SettimanaAttivita(val giorni: List<Int?>, val inizio: LocalDate = LocalDate.MIN)
+
+/** Valori del periodo precedente di pari durata, per il confronto (null con "Tutto"). */
+data class ConfrontoPeriodo(val volume: Double, val sessioni: Int)
 
 data class ReportState(
     val pronto: Boolean = false,
@@ -67,6 +78,8 @@ data class ReportState(
     val giorniAllenati: Int = 0,
     val serieTotali: Int = 0,
     val durataMediaMin: Long = 0,
+    val durataMediaMs: Long = 0,
+    val confronto: ConfrontoPeriodo? = null,
     // Costanza (sempre su tutti i dati: è "lo stato attuale")
     val settimaneConsecutive: Int = 0,
     val migliorStreak: Int = 0,
@@ -78,6 +91,7 @@ data class ReportState(
     // Sezioni filtrate per periodo
     val pr: List<RecordEsercizio> = emptyList(),
     val distribuzioneMuscolare: List<BarraValore> = emptyList(),
+    val muscoliPeriodo: MuscoliCoinvolti? = null,
     val eserciziDisponibili: List<EsercizioRef> = emptyList(),
     val esercizioAndamento: Long? = null,
     val andamento: List<PuntoAndamento> = emptyList(),
@@ -180,11 +194,13 @@ internal fun calcola(
     // Heatmap: ultime 14 settimane (lun→dom), null per i giorni futuri
     val inizioHeatmap = settimanaCorrente.minusWeeks(13)
     val heatmap = (0..13).map { w ->
+        val inizio = inizioHeatmap.plusWeeks(w.toLong())
         SettimanaAttivita(
             (0..6).map { d ->
-                val data = inizioHeatmap.plusWeeks(w.toLong()).plusDays(d.toLong())
+                val data = inizio.plusDays(d.toLong())
                 if (data.isAfter(oggi)) null else giorniTutti[data] ?: 0
-            }
+            },
+            inizio
         )
     }
 
@@ -208,20 +224,36 @@ internal fun calcola(
     val durate = sessioniF.mapNotNull { s -> s.dataFine?.let { it - s.dataInizio } }.filter { it > 0 }
     val durataMediaMin = if (durate.isEmpty()) 0L else durate.sum() / durate.size / 60000L
 
+    // Periodo precedente di pari durata: [cutoff - giorni, cutoff)
+    val confronto = periodo.giorni?.let { g ->
+        val inizioPrec = oggi.minusDays(2 * g).atStartOfDay(zona).toInstant().toEpochMilli()
+        val fine = cutoffMs!!
+        ConfrontoPeriodo(
+            volume = righe.filter { it.dataInizio in inizioPrec until fine }.sumOf(::volumeRiga),
+            sessioni = sessioni.count { it.dataInizio in inizioPrec until fine }
+        )
+    }
+
     // ---- PR con 1RM stimato (Epley) (periodo) ----
     val pr = righeF.groupBy { it.esercizioId }
         .map { (id, rs) ->
-            val e1rm = rs.mapNotNull { r ->
+            val stime = rs.mapNotNull { r ->
                 val p = r.pesoKg ?: return@mapNotNull null
                 val rip = r.ripetizioni ?: return@mapNotNull null
-                if (rip <= 0) null else p * (1f + rip / 30f)
-            }.maxOrNull()
+                if (rip <= 0) null else r to p * (1f + rip / 30f)
+            }
+            // La riga del record: miglior 1RM stimato; senza pesi, il maggior numero di ripetizioni.
+            val migliore = stime.maxByOrNull { it.second }?.first
+                ?: rs.maxByOrNull { it.pesoKg ?: 0f }?.takeIf { it.pesoKg != null }
+                ?: rs.maxBy { it.ripetizioni ?: it.durataSec ?: 0 }
             RecordEsercizio(
                 id = id,
                 nome = rs.first().nomeEsercizio,
                 pesoMax = rs.mapNotNull { it.pesoKg }.maxOrNull(),
                 ripMax = rs.mapNotNull { it.ripetizioni }.maxOrNull(),
-                e1rm = e1rm
+                e1rm = stime.maxOfOrNull { it.second },
+                dataMs = migliore.dataInizio,
+                nuovo = !giornoDi(migliore.dataInizio).isBefore(oggi.minusDays(6))
             )
         }
         .sortedWith(compareByDescending<RecordEsercizio> { it.e1rm ?: it.pesoMax ?: 0f }.thenBy { it.nome })
@@ -231,6 +263,24 @@ internal fun calcola(
         .groupingBy { it.gruppoMuscolare }.eachCount()
         .entries.sortedByDescending { it.value }
         .map { BarraValore(it.key.label, it.value.toDouble()) }
+
+    // ---- Muscoli allenati sulla figura (periodo) ----
+    // Punteggio per muscolo: 1 per serie dove è principale, 0,5 dove aiuta. In pieno quelli
+    // vicini al più allenato (≥ 60%), più leggeri gli altri.
+    val punteggi = HashMap<Muscolo, Double>()
+    righeF.groupBy { it.esercizioId }.values.forEach { rs ->
+        val mc = muscoliCoinvolti(rs.first().nomeEsercizio, rs.first().gruppoMuscolare) ?: return@forEach
+        if (rs.first().gruppoMuscolare == GruppoMuscolare.STRETCHING) return@forEach
+        mc.principali.forEach { punteggi.merge(it, rs.size.toDouble(), Double::plus) }
+        mc.secondari.forEach { punteggi.merge(it, rs.size * 0.5, Double::plus) }
+    }
+    val muscoliPeriodo = punteggi.values.maxOrNull()?.let { max ->
+        val (forti, deboli) = punteggi.entries.partition { it.value >= max * 0.6 }
+        MuscoliCoinvolti(
+            forti.sortedByDescending { it.value }.mapTo(LinkedHashSet()) { it.key },
+            deboli.sortedByDescending { it.value }.mapTo(LinkedHashSet()) { it.key }
+        )
+    }
 
     // ---- Andamento per esercizio (periodo + metrica) ----
     val eserciziDisponibili = righeF.distinctBy { it.esercizioId }
@@ -282,6 +332,8 @@ internal fun calcola(
         giorniAllenati = sessioniF.map { giornoDi(it.dataInizio) }.toSet().size,
         serieTotali = righeF.size,
         durataMediaMin = durataMediaMin,
+        durataMediaMs = if (durate.isEmpty()) 0L else durate.sum() / durate.size,
+        confronto = confronto,
         settimaneConsecutive = streak,
         migliorStreak = migliorStreak,
         allenamentiSettimana = allenamentiSettimana,
@@ -290,6 +342,7 @@ internal fun calcola(
         volumeMensile = volumeMensile,
         pr = pr,
         distribuzioneMuscolare = distribuzione,
+        muscoliPeriodo = muscoliPeriodo,
         eserciziDisponibili = eserciziDisponibili,
         esercizioAndamento = selId,
         andamento = andamento,
