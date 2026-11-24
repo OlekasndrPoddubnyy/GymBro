@@ -41,6 +41,9 @@ class GymBroRepository(private val db: GymBroDatabase) {
                 val descr = when {
                     attuale.descrizione.isNullOrBlank() -> nuova
                     nuova != null && nuova != attuale.descrizione && nuova.contains(attuale.descrizione) -> nuova
+                    // Testo di una versione precedente del seed, mai modificato dall'utente: si aggiorna.
+                    nuova != null && descrizioneSenzaMacchina(attuale.descrizione) in
+                        descrizioniSuperate[seed.nome].orEmpty() -> nuova
                     else -> attuale.descrizione
                 }
                 val img = if (attuale.immaginePath.isNullOrBlank()) pathAsset else attuale.immaginePath

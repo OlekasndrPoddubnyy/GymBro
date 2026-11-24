@@ -52,11 +52,39 @@ private fun e(
     predefinito = true
 )
 
+/**
+ * Testi di esecuzione di versioni precedenti del seed, poi corretti (senza la riga "Technogym: …").
+ * Se un esercizio predefinito ha ancora esattamente uno di questi testi, l'utente non l'ha
+ * modificato e viene allineato alla versione attuale.
+ */
+val descrizioniSuperate: Map<String, Set<String>> = mapOf(
+    "Panca inclinata con bilanciere" to "Su panca inclinata 30-45°, spingi il bilanciere verso l'alto allenando la parte alta del petto.",
+    "Panca declinata con bilanciere" to "Su panca declinata, spingi il bilanciere in alto enfatizzando la parte bassa del petto.",
+    "Rack pull" to "Stacco parziale con il bilanciere appoggiato sui fermi del rack all'altezza delle ginocchia: estendi le anche e stringi le scapole.",
+    "Iperestensioni" to "Sulla panca apposita, scendi col busto e risali estendendo la schiena, per lombari e glutei.",
+    "Lento avanti" to "In piedi, spingi il bilanciere dalle spalle sopra la testa fino a braccia distese.",
+    "Tirate al mento con bilanciere" to "Tira il bilanciere lungo il corpo fino al mento con i gomiti alti, per spalle e trapezi.",
+    "Arnold press" to "Parti con i manubri davanti e ruota i polsi mentre spingi sopra la testa, per tutto il deltoide.",
+    "Tirate al mento ai cavi" to "Tira la barra del cavo basso verso il mento con i gomiti alti.",
+    "Pike push-up" to "In posizione a V rovesciata, piega le braccia portando la testa a terra e spingi.",
+    "Distensioni presa stretta" to "Su panca, presa stretta sul bilanciere, spingi enfatizzando i tricipiti.",
+    "French press" to "Sdraiato, porta il bilanciere dietro la fronte piegando i gomiti e ridistendi per i tricipiti.",
+    "Affondi inversi con manubri" to "Manubri ai fianchi, passo indietro e ginocchio dietro verso terra: più facile per le ginocchia dell'affondo avanti.",
+    "Adductor machine" to "Seduto, chiudi le gambe contro la resistenza per gli adduttori interno coscia.",
+    "Calf alla pressa" to "Alla pressa, spingi con le punte dei piedi estendendo le caviglie.",
+    "Hip thrust" to "Schiena su una panca e bilanciere sull'anca, spingi il bacino in alto contraendo i glutei.",
+    "Ponte glutei con bilanciere" to "A terra, bilanciere sull'anca, solleva il bacino contraendo i glutei.",
+    "Pull-through ai cavi" to "Tra le gambe, tira la fune del cavo basso estendendo l'anca in avanti, per i glutei.",
+    "Abduzione ai cavi" to "Cavigliera al cavo basso, porta la gamba lateralmente verso l'esterno.",
+    "Ponte glutei a corpo libero" to "A terra, solleva il bacino contraendo i glutei, senza pesi.",
+    "Crunch ai cavi" to "In ginocchio sotto il cavo alto, fletti il busto verso il basso contraendo l'addome.",
+).mapValues { setOf(it.value) }
+
 fun eserciziPredefiniti(): List<Esercizio> = listOf(
     // ---------- PETTO ----------
     e("Panca piana", PETTO, BILANCIERE, "Sdraiato sulla panca, spingi il bilanciere dal petto verso l'alto fino a braccia distese, poi controlla la discesa."),
-    e("Panca inclinata con bilanciere", PETTO, BILANCIERE, "Su panca inclinata 30-45°, spingi il bilanciere verso l'alto allenando la parte alta del petto."),
-    e("Panca declinata con bilanciere", PETTO, BILANCIERE, "Su panca declinata, spingi il bilanciere in alto enfatizzando la parte bassa del petto."),
+    e("Panca inclinata con bilanciere", PETTO, BILANCIERE, "Su panca inclinata 30-45°, abbassa il bilanciere alla parte alta del petto e spingi fino a braccia distese."),
+    e("Panca declinata con bilanciere", PETTO, BILANCIERE, "Su panca declinata con le gambe bloccate, abbassa il bilanciere alla parte bassa del petto e spingi in alto."),
     e("Floor press con bilanciere", PETTO, BILANCIERE, "Sdraiato a terra, spingi il bilanciere dal petto: i gomiti toccano il pavimento e limitano l'escursione, utile per tricipiti e lockout."),
     e("Panca inclinata manubri", PETTO, MANUBRI, "Su panca inclinata, spingi i manubri verso l'alto fino a unirli, poi scendi in controllo."),
     e("Panca piana con manubri", PETTO, MANUBRI, "Sdraiato, spingi i due manubri dal petto verso l'alto controllando l'apertura in basso."),
@@ -85,7 +113,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
 
     // ---------- SCHIENA ----------
     e("Stacco da terra", SCHIENA, BILANCIERE, "Con schiena dritta, solleva il bilanciere da terra estendendo gambe e anche fino in piedi, poi controlla la discesa."),
-    e("Rack pull", SCHIENA, BILANCIERE, "Stacco parziale con il bilanciere appoggiato sui fermi del rack all'altezza delle ginocchia: estendi le anche e stringi le scapole.", img = "stacco_da_terra"),
+    e("Rack pull", SCHIENA, BILANCIERE, "Stacco parziale con il bilanciere appoggiato sui fermi del rack all'altezza delle ginocchia: schiena dritta, estendi le anche fino a stare in piedi con le spalle indietro.", img = "stacco_da_terra"),
     e("Rematore con bilanciere", SCHIENA, BILANCIERE, "Busto inclinato in avanti, tira il bilanciere verso l'addome stringendo le scapole."),
     e("Rematore presa inversa", SCHIENA, BILANCIERE, "Come il rematore ma con presa supina, per coinvolgere di più dorso basso e bicipiti."),
     e("Rematore Pendlay", SCHIENA, BILANCIERE, "Busto parallelo a terra, ogni ripetizione parte da fermo col bilanciere a terra: tira esplosivo verso lo sterno e riappoggia.", img = "rematore_con_bilanciere"),
@@ -102,7 +130,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Upper back alla macchina", SCHIENA, MACCHINA, "Petto contro il supporto, gomiti alti all'altezza delle spalle: tira indietro aprendo i gomiti per dorso alto, romboidi e deltoidi posteriori.", tg = "Upper Back", img = "rematore_alla_macchina"),
     e("Lower back alla macchina", SCHIENA, MACCHINA, "Seduto con lo schienale mobile sulla zona lombare: estendi il busto all'indietro in modo controllato e torna lento, senza strattoni.", tg = "Lower Back", img = "iperestensioni"),
     e("Trazioni assistite alla macchina", SCHIENA, MACCHINA, "Trazioni con assistenza al peso, per allenare il dorso fino a riuscire a farle libere.", tg = "Assisted Chin Dip"),
-    e("Iperestensioni", SCHIENA, MACCHINA, "Sulla panca apposita, scendi col busto e risali estendendo la schiena, per lombari e glutei."),
+    e("Iperestensioni", SCHIENA, MACCHINA, "Sulla panca apposita col bacino sul cuscinetto, scendi col busto e risali fino ad allinearlo alle gambe, senza inarcare oltre. Per lombari, glutei e femorali."),
     e("Rematore ai cavi", SCHIENA, CAVI, "Seduto al cavo basso, tira l'impugnatura verso l'addome stringendo le scapole."),
     e("Rematore a un braccio ai cavi", SCHIENA, CAVI, "In piedi o in affondo davanti al cavo a metà altezza, tira la maniglia verso il fianco con un braccio, ruotando appena il busto.", img = "rematore_ai_cavi"),
     e("Pulldown a un braccio ai cavi", SCHIENA, CAVI, "Dal cavo alto, tira con un braccio alla volta per un lavoro mirato del dorso.", img = "lat_machine_presa_stretta"),
@@ -115,13 +143,13 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Superman", SCHIENA, CORPO_LIBERO, "A pancia in giù, braccia distese avanti: solleva insieme braccia, petto e gambe di pochi centimetri, tieni 2 secondi e scendi."),
 
     // ---------- SPALLE ----------
-    e("Lento avanti", SPALLE, BILANCIERE, "In piedi, spingi il bilanciere dalle spalle sopra la testa fino a braccia distese."),
+    e("Lento avanti", SPALLE, BILANCIERE, "In piedi, glutei e addome contratti: spingi il bilanciere dalle clavicole sopra la testa fino a braccia distese, senza inarcare la schiena."),
     e("Push press", SPALLE, BILANCIERE, "Bilanciere sulle spalle: piccolo piegamento di gambe e spinta esplosiva per portarlo sopra la testa, poi scendi controllando.", img = "lento_avanti"),
     e("Landmine press", SPALLE, BILANCIERE, "Bilanciere ancorato a terra: spingi l'estremità in alto e in avanti con una mano. Traiettoria ad arco, amica delle spalle."),
-    e("Tirate al mento con bilanciere", SPALLE, BILANCIERE, "Tira il bilanciere lungo il corpo fino al mento con i gomiti alti, per spalle e trapezi."),
+    e("Tirate al mento con bilanciere", SPALLE, BILANCIERE, "Presa poco più larga delle spalle: tira il bilanciere lungo il corpo fino al petto alto, gomiti che guidano senza superare l'altezza delle spalle. Per deltoidi e trapezi."),
     e("Scrollate con bilanciere", SPALLE, BILANCIERE, "Solleva le spalle verso le orecchie tenendo il bilanciere, per i trapezi."),
     e("Lento avanti con manubri", SPALLE, MANUBRI, "Seduto o in piedi, spingi i manubri sopra la testa e controlla la discesa."),
-    e("Arnold press", SPALLE, MANUBRI, "Parti con i manubri davanti e ruota i polsi mentre spingi sopra la testa, per tutto il deltoide."),
+    e("Arnold press", SPALLE, MANUBRI, "Parti con i manubri davanti alle spalle e i palmi verso di te: spingi sopra la testa ruotando i polsi fino ad avere i palmi in avanti, poi torna invertendo il movimento."),
     e("Alzate laterali", SPALLE, MANUBRI, "Solleva i manubri lateralmente fino all'altezza delle spalle, gomiti leggermente piegati."),
     e("Alzate frontali", SPALLE, MANUBRI, "Solleva i manubri davanti a te fino all'altezza delle spalle, per il deltoide anteriore."),
     e("Alzate posteriori", SPALLE, MANUBRI, "Busto inclinato in avanti, apri le braccia all'indietro per il deltoide posteriore."),
@@ -135,12 +163,12 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Alzate frontali ai cavi", SPALLE, CAVI, "Di spalle al cavo basso, solleva la maniglia (o la corda) davanti a te fino all'altezza delle spalle.", img = "alzate_frontali"),
     e("Alzate posteriori ai cavi", SPALLE, CAVI, "Ai cavi incrociati, apri le braccia all'indietro per i deltoidi posteriori."),
     e("Y-raise ai cavi", SPALLE, CAVI, "Cavi bassi incrociati: solleva le braccia in diagonale sopra la testa formando una Y, per deltoidi e trapezio basso."),
-    e("Tirate al mento ai cavi", SPALLE, CAVI, "Tira la barra del cavo basso verso il mento con i gomiti alti.", img = "tirate_al_mento_con_bilanciere"),
+    e("Tirate al mento ai cavi", SPALLE, CAVI, "Dal cavo basso, tira la barra lungo il corpo fino al petto alto con i gomiti che guidano, senza superare l'altezza delle spalle.", img = "tirate_al_mento_con_bilanciere"),
     e("Scrollate ai cavi", SPALLE, CAVI, "Barra o maniglie ai cavi bassi: solleva le spalle verso le orecchie, tieni 1 secondo e scendi.", img = "scrollate_con_bilanciere"),
     e("Face pull ai cavi", SPALLE, CAVI, "Dal cavo all'altezza del viso, tira la corda verso la fronte aprendo i gomiti."),
     e("Rotazione esterna ai cavi", SPALLE, CAVI, "Cavo all'altezza del gomito, gomito piegato a 90° attaccato al fianco: ruota l'avambraccio verso l'esterno. Per la cuffia dei rotatori, carico leggero."),
     e("Rotazione interna ai cavi", SPALLE, CAVI, "Cavo all'altezza del gomito, gomito a 90° attaccato al fianco: porta l'avambraccio verso l'addome. Per la cuffia dei rotatori, carico leggero."),
-    e("Pike push-up", SPALLE, CORPO_LIBERO, "In posizione a V rovesciata, piega le braccia portando la testa a terra e spingi."),
+    e("Pike push-up", SPALLE, CORPO_LIBERO, "Bacino alto a V rovesciata, mani poco più larghe delle spalle: piega i gomiti portando la testa verso terra davanti alle mani, poi spingi fino a braccia distese."),
     e("Piegamenti in verticale al muro", SPALLE, CORPO_LIBERO, "In verticale con i piedi appoggiati al muro, scendi con la testa verso terra e spingi: esercizio avanzato per spalle e tricipiti."),
 
     // ---------- BICIPITI ----------
@@ -162,8 +190,8 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Curl Bayesian ai cavi", BICIPITI, CAVI, "Di spalle al cavo basso, braccio leggermente dietro al corpo: fletti il gomito. Il bicipite lavora in allungamento.", img = "curl_ai_cavi"),
 
     // ---------- TRICIPITI ----------
-    e("Distensioni presa stretta", TRICIPITI, BILANCIERE, "Su panca, presa stretta sul bilanciere, spingi enfatizzando i tricipiti."),
-    e("French press", TRICIPITI, BILANCIERE, "Sdraiato, porta il bilanciere dietro la fronte piegando i gomiti e ridistendi per i tricipiti."),
+    e("Distensioni presa stretta", TRICIPITI, BILANCIERE, "Su panca, presa alla larghezza delle spalle: abbassa il bilanciere al petto basso con i gomiti vicini al corpo e spingi, enfatizzando i tricipiti."),
+    e("French press", TRICIPITI, BILANCIERE, "Sdraiato su panca, braccia verticali: piega solo i gomiti portando il bilanciere verso la fronte, poi distendi senza muovere le braccia."),
     e("French press con manubri", TRICIPITI, MANUBRI, "Sdraiato con un manubrio per mano a presa neutra: piega i gomiti portando i manubri ai lati della testa e distendi.", img = "french_press"),
     e("Estensioni sopra la testa con manubrio", TRICIPITI, MANUBRI, "Porta un manubrio dietro la nuca e distendi le braccia in alto."),
     e("Kickback con manubri", TRICIPITI, MANUBRI, "Busto inclinato e gomito fermo, distendi l'avambraccio all'indietro per il tricipite."),
@@ -195,7 +223,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Goblet squat con manubrio", GAMBE, MANUBRI, "Tieni un manubrio al petto e accosciati mantenendo il busto eretto."),
     e("Squat con manubri", GAMBE, MANUBRI, "Un manubrio per mano lungo i fianchi: accosciati con busto eretto e talloni a terra, poi risali.", img = "goblet_squat_con_manubrio"),
     e("Affondi con manubri", GAMBE, MANUBRI, "Con un manubrio per mano, fai un passo avanti e piega le ginocchia, poi torna in piedi."),
-    e("Affondi inversi con manubri", GAMBE, MANUBRI, "Manubri ai fianchi, passo indietro e ginocchio dietro verso terra: più facile per le ginocchia dell'affondo avanti.", img = "affondi_con_manubri"),
+    e("Affondi inversi con manubri", GAMBE, MANUBRI, "Manubri ai fianchi, passo indietro e ginocchio dietro verso terra, poi torna spingendo con la gamba davanti: più delicato per le ginocchia dell'affondo in avanti.", img = "affondi_con_manubri"),
     e("Affondi laterali con manubri", GAMBE, MANUBRI, "Manubrio al petto o ai fianchi: passo laterale ampio, piega la gamba che si sposta tenendo l'altra tesa, poi torna."),
     e("Affondi in camminata", GAMBE, MANUBRI, "Affondi avanzando un passo dopo l'altro con i manubri ai fianchi."),
     e("Bulgarian split squat", GAMBE, MANUBRI, "Piede posteriore su una panca, piega la gamba avanti fino in basso e risali, con manubri."),
@@ -207,7 +235,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Leg extension", GAMBE, MACCHINA, "Seduto, distendi le gambe sollevando il rullo per isolare i quadricipiti.", tg = "Leg Extension"),
     e("Leg curl sdraiato", GAMBE, MACCHINA, "Prono alla macchina, fletti le gambe portando i talloni ai glutei per i femorali.", tg = "Prone Leg Curl"),
     e("Leg curl seduto", GAMBE, MACCHINA, "Seduto, spingi il rullo verso il basso flettendo le ginocchia per i femorali.", tg = "Leg Curl"),
-    e("Adductor machine", GAMBE, MACCHINA, "Seduto, chiudi le gambe contro la resistenza per gli adduttori interno coscia.", tg = "Adductor"),
+    e("Adductor machine", GAMBE, MACCHINA, "Seduto, chiudi le gambe contro la resistenza per gli adduttori (interno coscia), poi riapri lentamente.", tg = "Adductor"),
     e("Multi hip adduzione", GAMBE, MACCHINA, "In piedi alla Multi Hip, rullo all'interno del ginocchio: porta la gamba verso e oltre la linea centrale, poi torna lento.", tg = "Multi Hip"),
     e("Multi hip flessione dell'anca", GAMBE, MACCHINA, "In piedi alla Multi Hip, rullo sopra il ginocchio: solleva la coscia in avanti fino all'altezza dell'anca, busto fermo.", tg = "Multi Hip"),
     e("Squat al multipower", GAMBE, MACCHINA, "Squat guidato al multipower (Smith) per maggiore stabilità del movimento.", tg = "Multipower"),
@@ -226,9 +254,9 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Wall sit", GAMBE, CORPO_LIBERO, "Schiena al muro e ginocchia a 90°, mantieni la posizione isometrica più a lungo possibile."),
 
     // ---------- GLUTEI ----------
-    e("Hip thrust", GLUTEI, BILANCIERE, "Schiena su una panca e bilanciere sull'anca, spingi il bacino in alto contraendo i glutei."),
+    e("Hip thrust", GLUTEI, BILANCIERE, "Parte alta della schiena appoggiata alla panca e bilanciere sull'anca: spingi il bacino in alto fino ad allineare busto e cosce, stringi i glutei e scendi controllando."),
     e("Stacco sumo", GLUTEI, BILANCIERE, "Stacco a gambe larghe e punte aperte, per coinvolgere di più glutei e interno coscia."),
-    e("Ponte glutei con bilanciere", GLUTEI, BILANCIERE, "A terra, bilanciere sull'anca, solleva il bacino contraendo i glutei."),
+    e("Ponte glutei con bilanciere", GLUTEI, BILANCIERE, "Supino a terra con ginocchia piegate e bilanciere sull'anca: solleva il bacino contraendo i glutei, poi scendi lento."),
     e("Hip thrust con manubrio", GLUTEI, MANUBRI, "Spalle sulla panca e manubrio sull'anca, spingi il bacino in alto.", img = "hip_thrust"),
     e("Sumo squat con manubrio", GLUTEI, MANUBRI, "Gambe larghe e punte aperte, manubrio tenuto in verticale tra le gambe: scendi con le ginocchia in fuori e risali.", img = "goblet_squat_con_manubrio"),
     e("Stacco a una gamba con manubri", GLUTEI, MANUBRI, "In equilibrio su una gamba, piega il busto in avanti allungando l'altra gamba indietro, schiena dritta; risali stringendo il gluteo."),
@@ -239,9 +267,9 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Multi hip slancio posteriore", GLUTEI, MACCHINA, "In piedi alla Multi Hip, rullo dietro al ginocchio: spingi la gamba indietro estendendo l'anca, senza inarcare la schiena.", tg = "Multi Hip", img = "slanci_posteriori"),
     e("Multi hip abduzione", GLUTEI, MACCHINA, "In piedi alla Multi Hip, rullo all'esterno del ginocchio: porta la gamba di lato verso l'esterno e torna lento.", tg = "Multi Hip"),
     e("Kickback ai cavi", GLUTEI, CAVI, "Cavigliera al cavo basso, slancia la gamba all'indietro contraendo il gluteo."),
-    e("Pull-through ai cavi", GLUTEI, CAVI, "Tra le gambe, tira la fune del cavo basso estendendo l'anca in avanti, per i glutei."),
-    e("Abduzione ai cavi", GLUTEI, CAVI, "Cavigliera al cavo basso, porta la gamba lateralmente verso l'esterno."),
-    e("Ponte glutei a corpo libero", GLUTEI, CORPO_LIBERO, "A terra, solleva il bacino contraendo i glutei, senza pesi."),
+    e("Pull-through ai cavi", GLUTEI, CAVI, "Di spalle al cavo basso con la corda tra le gambe: piegati in avanti dalle anche con schiena dritta, poi estendi spingendo il bacino in avanti e stringi i glutei."),
+    e("Abduzione ai cavi", GLUTEI, CAVI, "Cavigliera al cavo basso sulla gamba più lontana dalla colonna: porta la gamba lateralmente verso l'esterno e torna lento, busto fermo."),
+    e("Ponte glutei a corpo libero", GLUTEI, CORPO_LIBERO, "Supino con ginocchia piegate e piedi a terra: solleva il bacino contraendo i glutei fino ad allineare cosce e busto, poi scendi lento."),
     e("Ponte glutei a una gamba", GLUTEI, CORPO_LIBERO, "Ponte con un piede a terra e l'altra gamba sollevata: spingi col tallone e tieni il bacino dritto.", img = "ponte_glutei_a_corpo_libero"),
     e("Slanci posteriori", GLUTEI, CORPO_LIBERO, "A quattro zampe, slancia una gamba all'indietro e in alto contraendo il gluteo."),
     e("Clamshell", GLUTEI, CORPO_LIBERO, "Sdraiato su un fianco a ginocchia piegate, piedi uniti: apri il ginocchio di sopra come una conchiglia senza ruotare il bacino."),
@@ -251,7 +279,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Calf raise", POLPACCI, MACCHINA, "In piedi alla macchina, sollevati sulle punte estendendo le caviglie, poi scendi lentamente."),
     e("Calf raise seduto", POLPACCI, MACCHINA, "Seduto coi pesi sulle ginocchia, sollevati sulle punte per il soleo."),
     e("Rotary calf", POLPACCI, MACCHINA, "Seduto con la schiena appoggiata, avampiedi sulla pedana: spingi estendendo le caviglie e torna allungando bene il polpaccio.", tg = "Rotary Calf", img = "calf_raise_seduto"),
-    e("Calf alla pressa", POLPACCI, MACCHINA, "Alla pressa, spingi con le punte dei piedi estendendo le caviglie."),
+    e("Calf alla pressa", POLPACCI, MACCHINA, "Alla pressa, avampiedi sul bordo basso della pedana e gambe distese ma non bloccate: spingi con le punte estendendo le caviglie e torna in allungamento."),
     e("Calf al multipower", POLPACCI, MACCHINA, "Bilanciere guidato sulle spalle e avampiedi su un rialzo: sollevati sulle punte e scendi in allungamento.", tg = "Multipower", img = "calf_raise"),
     e("Calf raise con bilanciere", POLPACCI, BILANCIERE, "Bilanciere sulle spalle, sollevati sulle punte e scendi lento; meglio con gli avampiedi su un rialzo.", img = "calf_raise"),
     e("Calf raise con manubri", POLPACCI, MANUBRI, "In piedi con manubri ai fianchi, sollevati sulle punte dei piedi."),
@@ -281,7 +309,7 @@ fun eserciziPredefiniti(): List<Esercizio> = listOf(
     e("Crunch alla macchina", CORE, MACCHINA, "Seduto alla macchina, fletti il busto in avanti contro la resistenza.", tg = "Abdominal Crunch"),
     e("Total abdominal", CORE, MACCHINA, "Seduto con le braccia sui cuscinetti: fletti busto e bacino insieme avvicinando sterno e ginocchia, poi torna lento.", tg = "Total Abdominal", img = "crunch_alla_macchina"),
     e("Rotazione del busto alla macchina", CORE, MACCHINA, "Seduto, ruota il tronco contro la resistenza per gli obliqui.", tg = "Rotary Torso"),
-    e("Crunch ai cavi", CORE, CAVI, "In ginocchio sotto il cavo alto, fletti il busto verso il basso contraendo l'addome."),
+    e("Crunch ai cavi", CORE, CAVI, "In ginocchio sotto il cavo alto, corda ai lati della testa: fletti il busto verso il basso arrotondando la schiena, con le anche ferme."),
     e("Pallof press ai cavi", CORE, CAVI, "Di lato al cavo, spingi l'impugnatura in avanti resistendo alla rotazione (anti-rotazione)."),
     e("Woodchop ai cavi", CORE, CAVI, "Tira il cavo in diagonale dall'alto al basso (o viceversa) ruotando il tronco."),
     e("Woodchop dal basso ai cavi", CORE, CAVI, "Dal cavo basso, porta la maniglia in diagonale verso l'alto oltre la spalla opposta ruotando busto e anche.", img = "woodchop_ai_cavi"),
