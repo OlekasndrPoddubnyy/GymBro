@@ -212,18 +212,23 @@ class GymBuddyViewModel(
 
     fun salvaImpostazioni(i: ImpostazioniBuddy) = memoria.impostazioni(i)
 
-    fun sostituisci(schedaId: Long, vecchio: EsercizioSchedaCompleto, nuovo: Esercizio, carico: Float?) {
+    fun sostituisci(schedaId: Long, vecchio: EsercizioSchedaCompleto, nuovo: Esercizio, carico: Float?) =
+        sostituisci(schedaId, vecchio.esercizio.id, vecchio.serie.minByOrNull { it.numero }?.ripetizioni, nuovo, carico)
+
+    /** @param ripetizioni quelle della prima serie in scheda, per il range di Gym Buddy. */
+    fun sostituisci(schedaId: Long, vecchioId: Long, ripetizioni: String?, nuovo: Esercizio, carico: Float?) {
         if (modifica?.isActive == true) return
         modifica = viewModelScope.launch {
-            val prima = repo.cambiaEsercizio(schedaId, vecchio.esercizio.id, nuovo.id, carico)
+            val prima = repo.cambiaEsercizio(schedaId, vecchioId, nuovo.id, carico)
             if (prima == null) {
-                errore = "La scheda è cambiata nel frattempo: sostituzione non fatta."
+                errore = "Sostituzione non fatta: la scheda è cambiata nel frattempo, oppure contiene già " +
+                    "\"${nuovo.nome}\"."
                 return@launch
             }
-            val origine = memoria.progresso(ChiaveBuddy(schedaId, vecchio.esercizio.id))
+            val origine = memoria.progresso(ChiaveBuddy(schedaId, vecchioId))
             val impostazioni = memoria.dati.value.impostazioni
             // Stesso range di prima, passo e incremento del nuovo attrezzo.
-            val base = impostazioni.regolePer(nuovo, vecchio.serie.minByOrNull { it.numero }?.ripetizioni)
+            val base = impostazioni.regolePer(nuovo, ripetizioni)
             val regole = if (origine?.stato == null) base
             else base.copy(ripMin = origine.regole.ripMin, ripMax = origine.regole.ripMax)
             val attivo = origine?.attivo == true

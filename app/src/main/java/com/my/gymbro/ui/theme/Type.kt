@@ -24,6 +24,9 @@ val DmSans = FontFamily(
     Font(R.font.dm_sans_700, FontWeight.Bold),
 )
 
+/** Rock Salt: scrittura a mano grezza, solo per i titoli grandi (schermate e sezioni). */
+val RockSalt = FontFamily(Font(R.font.rock_salt, FontWeight.Normal))
+
 private val base = Typography()
 
 private fun TextStyle.display(size: Int, line: Int, weight: FontWeight = FontWeight.Black) = copy(
@@ -63,11 +66,18 @@ val StileSopratitolo = TextStyle(
     letterSpacing = 0.12.em
 )
 
-/** Titolo di sezione condensato maiuscolo (es. "RECORD PERSONALI"). */
+/** Titolo di sezione scritto a mano (es. "Record personali"). */
 val StileTitoloSezione = TextStyle(
-    fontFamily = BigShoulders,
-    fontWeight = FontWeight.ExtraBold,
-    fontSize = 24.sp,
-    lineHeight = 26.sp,
-    letterSpacing = 0.02.em
+    fontFamily = RockSalt,
+    fontWeight = FontWeight.Normal,
+    fontSize = 19.sp,
+    lineHeight = 30.sp,
+)
+
+/** Titolo grande di una schermata, scritto a mano. */
+val StileTitoloSchermata = TextStyle(
+    fontFamily = RockSalt,
+    fontWeight = FontWeight.Normal,
+    fontSize = 26.sp,
+    lineHeight = 40.sp,
 )

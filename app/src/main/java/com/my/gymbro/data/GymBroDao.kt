@@ -94,6 +94,14 @@ interface GymBroDao {
 
     @Insert suspend fun insertSerieEseguita(serie: SerieEseguita): Long
 
+    /**
+     * Sposta avanti la fine della sessione [id] a [fine], mai indietro: dopo ogni serie, così un
+     * allenamento interrotto (app chiusa da Android, crash) ha comunque una durata. MAX rende
+     * innocuo l'ordine con cui arriva rispetto a [chiudiSessione].
+     */
+    @Query("UPDATE sessioni SET dataFine = MAX(COALESCE(dataFine, 0), :fine) WHERE id = :id")
+    suspend fun estendiSessione(id: Long, fine: Long)
+
     /** Cancella la sessione [id] solo se non ha nessuna serie registrata. */
     @Query(
         """
@@ -126,6 +134,25 @@ interface GymBroDao {
         """
     )
     suspend fun ultimeSerieEseguite(esercizioId: Long, sessioneCorrente: Long): List<SerieEseguita>
+
+    // ---------- Backup: tutte le righe, e ripristino con gli stessi id ----------
+    @Query("SELECT * FROM esercizi_scheda") suspend fun tuttiEserciziScheda(): List<EsercizioScheda>
+    @Query("SELECT * FROM serie_pianificate") suspend fun tutteSeriePianificate(): List<SeriePianificata>
+    @Query("SELECT * FROM sessioni") suspend fun tutteSessioni(): List<Sessione>
+    @Query("SELECT * FROM serie_eseguite") suspend fun tutteSerieEseguite(): List<SerieEseguita>
+
+    @Insert suspend fun insertSchede(schede: List<Scheda>)
+    @Insert suspend fun insertEserciziScheda(righe: List<EsercizioScheda>)
+    @Insert suspend fun insertSessioni(sessioni: List<Sessione>)
+    @Insert suspend fun insertSerieEseguite(serie: List<SerieEseguita>)
+
+    // Dai figli ai genitori, per non violare le chiavi esterne.
+    @Query("DELETE FROM serie_eseguite") suspend fun svuotaSerieEseguite()
+    @Query("DELETE FROM sessioni") suspend fun svuotaSessioni()
+    @Query("DELETE FROM serie_pianificate") suspend fun svuotaSeriePianificate()
+    @Query("DELETE FROM esercizi_scheda") suspend fun svuotaEserciziScheda()
+    @Query("DELETE FROM schede") suspend fun svuotaSchede()
+    @Query("DELETE FROM esercizi") suspend fun svuotaEsercizi()
 
     // ---------- Report ----------
     @Query(

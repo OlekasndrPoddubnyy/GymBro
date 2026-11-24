@@ -43,7 +43,10 @@ fun ImpostazioniBuddy.regolePer(esercizio: Esercizio, ripetizioni: String?): Reg
         Attrezzatura.BILANCIERE ->
             if (esercizio.gruppoMuscolare in GRUPPI_GAMBE) kgBilanciereGambe else kgBilanciereAlto
     }
-    return RegoleBuddy(minimo, massimo, passoRip, incremento, conferme, progressioneRapida)
+    return RegoleBuddy(
+        minimo, massimo, passoRip, incremento, conferme, progressioneRapida,
+        caricoInverso = caricoInverso(esercizio.nome),
+    )
 }
 
 private const val QUOTA_MANUBRIO = 0.4f

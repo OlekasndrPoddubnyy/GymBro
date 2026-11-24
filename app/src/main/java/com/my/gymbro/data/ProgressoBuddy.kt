@@ -57,12 +57,14 @@ private const val PIU_PESO = "piu_peso"
 private const val SCARICO = "scarico"
 private const val CORREGGI_CARICO = "correggi_carico"
 private const val VARIANTE = "variante"
+private const val MENO_AIUTO = "meno_aiuto"
 
 private fun tipoProposta(p: Proposta): String = when (p) {
     is Proposta.PiuRipetizioni -> PIU_RIPETIZIONI
     is Proposta.PiuPeso -> PIU_PESO
     is Proposta.Scarico -> SCARICO
     is Proposta.CorreggiCarico -> CORREGGI_CARICO
+    is Proposta.MenoAiuto -> MENO_AIUTO
     Proposta.VariantePiuDifficile -> VARIANTE
 }
 
@@ -130,6 +132,7 @@ fun decodificaProgresso(testo: String): ProgressoBuddy {
         tipo == PIU_PESO -> Proposta.PiuPeso(proposto)
         tipo == SCARICO -> Proposta.Scarico(proposto)
         tipo == CORREGGI_CARICO -> Proposta.CorreggiCarico(proposto)
+        tipo == MENO_AIUTO -> Proposta.MenoAiuto(proposto)
         else -> null
     }
     val stato = intero("rip")?.let { rip ->

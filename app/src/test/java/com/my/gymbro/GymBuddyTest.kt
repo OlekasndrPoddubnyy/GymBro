@@ -8,6 +8,7 @@ import com.my.gymbro.data.RegoleBuddy
 import com.my.gymbro.data.SerieFatta
 import com.my.gymbro.data.StatoBuddy
 import com.my.gymbro.data.accetta
+import com.my.gymbro.data.caricoInverso
 import com.my.gymbro.data.codificaProgresso
 import com.my.gymbro.data.decodificaProgresso
 import com.my.gymbro.data.dopoAllenamento
@@ -132,6 +133,50 @@ class GymBuddyTest {
             ultimaProposta = "scarico",
             ultimaAccettata = false,
         )
+        assertEquals(p, decodificaProgresso(codificaProgresso(p)))
+    }
+
+    @Test
+    fun pesiPiccoli_aumentoDimezzato() {
+        val manubri = regole.copy(incrementoKg = 2f, conferme = 1)
+        assertEquals(Proposta.PiuPeso(Obiettivo(8, 5f)), StatoBuddy(Obiettivo(12, 4f)).fai(12, 12, 12, r = manubri).proposta)
+        assertEquals(Proposta.PiuPeso(Obiettivo(8, 22f)), StatoBuddy(Obiettivo(12, 20f)).fai(12, 12, 12, r = manubri).proposta)
+        val cavi = regole.copy(incrementoKg = 5f, conferme = 1)
+        assertEquals(Proposta.PiuPeso(Obiettivo(8, 12.5f)), StatoBuddy(Obiettivo(12, 10f)).fai(12, 12, 12, r = cavi).proposta)
+        assertEquals(Proposta.PiuPeso(Obiettivo(8, 25f)), StatoBuddy(Obiettivo(12, 20f)).fai(12, 12, 12, r = cavi).proposta)
+    }
+
+    @Test
+    fun pesiPiccoli_scaricoDiMezzoIncremento() {
+        val cavi = regole.copy(incrementoKg = 5f)
+        val s = StatoBuddy(Obiettivo(10, 10f)).fai(9, 9, 9, r = cavi).fai(9, 9, 9, r = cavi).fai(9, 9, 9, r = cavi)
+        assertEquals(Proposta.Scarico(Obiettivo(8, 7.5f)), s.proposta)
+    }
+
+    private val assistita = regole.copy(incrementoKg = 5f, conferme = 1, caricoInverso = true)
+
+    @Test
+    fun macchinaAssistita_progredisceTogliendoAiuto() {
+        assertEquals(true, caricoInverso("Trazioni assistite alla macchina"))
+        assertEquals(false, caricoInverso("Lat machine"))
+        val s = StatoBuddy(Obiettivo(12, 30f)).fai(12, 12, 12, r = assistita)
+        assertEquals(Proposta.MenoAiuto(Obiettivo(8, 25f)), s.proposta)
+        // Ultimo aiuto tolto: si passa alla versione libera.
+        assertEquals(Proposta.VariantePiuDifficile, StatoBuddy(Obiettivo(12, 5f)).fai(12, 12, 12, r = assistita).proposta)
+    }
+
+    @Test
+    fun macchinaAssistita_piuAiutoDellObiettivo_incompleta() {
+        val inizio = StatoBuddy(Obiettivo(10, 30f))
+        assertEquals(1, inizio.fai(10, 10, 10, r = assistita, kg = 35f).incompleteDiFila)
+        assertEquals(1, inizio.fai(10, 10, 10, r = assistita.copy(conferme = 2), kg = 25f).completeDiFila)
+        val scarico = inizio.fai(9, 9, 9, r = assistita).fai(9, 9, 9, r = assistita).fai(9, 9, 9, r = assistita)
+        assertEquals(Proposta.Scarico(Obiettivo(8, 35f)), scarico.proposta)
+    }
+
+    @Test
+    fun menoAiuto_salvatoERiletto() {
+        val p = ProgressoBuddy(attivo = true, stato = StatoBuddy(Obiettivo(10, 30f), proposta = Proposta.MenoAiuto(Obiettivo(8, 25f))))
         assertEquals(p, decodificaProgresso(codificaProgresso(p)))
     }
 

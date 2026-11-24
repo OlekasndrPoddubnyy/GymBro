@@ -8,6 +8,8 @@ import com.my.gymbro.GymBroApplication
 import com.my.gymbro.data.GruppoMuscolare
 import com.my.gymbro.data.RigaReport
 import com.my.gymbro.data.SerieEseguita
+import com.my.gymbro.data.allenabile
+import com.my.gymbro.data.caricoInverso
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -15,7 +17,10 @@ import kotlinx.coroutines.withContext
 /** Un esercizio appena fatto confrontato con le sessioni precedenti. */
 internal data class ConfrontoEsercizio(
     val primaVolta: Boolean,
-    /** Peso massimo mai sollevato prima (o, a corpo libero, più ripetizioni di sempre). */
+    /**
+     * Peso massimo mai sollevato prima; a corpo libero più ripetizioni di sempre, a tempo più secondi,
+     * sulle macchine assistite meno aiuto.
+     */
     val record: Boolean,
     /** Volume rispetto all'ultima volta che l'hai fatto; null se manca un termine di paragone. */
     val deltaVolume: Double?,
@@ -31,9 +36,20 @@ internal fun confrontaConStorico(log: List<SerieEseguita>, storico: List<RigaRep
         val prec = prima[id].orEmpty()
         if (prec.isEmpty()) return@mapValues ConfrontoEsercizio(primaVolta = true, record = false, deltaVolume = null)
 
+        // Macchine assistite: il peso è aiuto, il record è averne usato meno di sempre e il volume non ha senso.
+        val inverso = caricoInverso(prec.first().nomeEsercizio)
         val pesoOra = serie.mapNotNull { it.pesoKg }.filter { it > 0f }.maxOrNull()
         val pesoPrima = prec.mapNotNull { it.pesoKg }.filter { it > 0f }.maxOrNull()
+        val aTempo = serie.all { it.durataSec != null }
         val record = when {
+            // Stretching e cardio hanno durate fisse: un "record" non vorrebbe dire niente.
+            !prec.first().gruppoMuscolare.allenabile -> false
+            // Plank e simili: tenuto più a lungo di sempre.
+            aTempo -> {
+                val primaSec = prec.mapNotNull { it.durataSec }.maxOrNull()
+                primaSec != null && serie.maxOf { it.durataSec ?: 0 } > primaSec
+            }
+            inverso -> serie.minOf { it.pesoKg ?: 0f } < prec.minOf { it.pesoKg ?: 0f }
             pesoOra != null -> pesoPrima != null && pesoOra > pesoPrima
             else -> {
                 val ripOra = serie.mapNotNull { it.ripetizioni }.maxOrNull()
@@ -48,7 +64,7 @@ internal fun confrontaConStorico(log: List<SerieEseguita>, storico: List<RigaRep
         ConfrontoEsercizio(
             primaVolta = false,
             record = record,
-            deltaVolume = if (volOra > 0 && volPrima > 0) volOra - volPrima else null
+            deltaVolume = if (!inverso && volOra > 0 && volPrima > 0) volOra - volPrima else null
         )
     }
 }
@@ -64,6 +80,11 @@ internal fun confrontoConStorico(log: List<SerieEseguita>): Map<Long, ConfrontoE
     }
     return confronto
 }
+
+/** Volume (kg × ripetizioni) delle serie; quelle sulle macchine assistite non contano, il loro peso è aiuto. */
+internal fun volumeSerie(stato: StatoEsecuzione, serie: List<SerieEseguita>): Double =
+    serie.filterNot { caricoInverso(stato.nomiEseguiti[it.esercizioId].orEmpty()) }
+        .sumOf { volume(it.pesoKg, it.ripetizioni) }
 
 /** Tutti i muscoli lavorati nell'allenamento: principali di almeno un esercizio, poi gli altri. */
 internal fun muscoliAllenamento(stato: StatoEsecuzione): MuscoliCoinvolti? {

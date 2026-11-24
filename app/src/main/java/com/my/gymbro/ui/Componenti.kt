@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.my.gymbro.ui.theme.StileSopratitolo
+import com.my.gymbro.ui.theme.StileTitoloSchermata
 import com.my.gymbro.ui.theme.StileTitoloSezione
 
 /** Bottone principale lime a tutta larghezza (azione primaria della schermata). */
@@ -100,10 +101,10 @@ fun Sopratitolo(testo: String, modifier: Modifier = Modifier, colore: Color = Ma
     Text(testo.uppercase(), style = StileSopratitolo, color = colore, modifier = modifier)
 }
 
-/** Titolo di sezione condensato maiuscolo. */
+/** Titolo di sezione scritto a mano (Rock Salt). */
 @Composable
 fun TitoloSezione(testo: String, modifier: Modifier = Modifier, colore: Color = MaterialTheme.colorScheme.onSurface) {
-    Text(testo.uppercase(), style = StileTitoloSezione, color = colore, modifier = modifier)
+    Text(testo, style = StileTitoloSezione, color = colore, modifier = modifier)
 }
 
 /** Bottone icona quadrato arrotondato (indietro, chiudi…). */
@@ -143,8 +144,8 @@ fun IntestazioneDettaglio(
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (sopratitolo != null) Sopratitolo(sopratitolo)
             Text(
-                titolo.uppercase(),
-                style = MaterialTheme.typography.headlineLarge,
+                titolo,
+                style = StileTitoloSchermata,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )

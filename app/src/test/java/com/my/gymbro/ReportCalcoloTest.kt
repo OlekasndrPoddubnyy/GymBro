@@ -2,10 +2,12 @@ package com.my.gymbro
 
 import com.my.gymbro.data.GruppoMuscolare
 import com.my.gymbro.data.RigaReport
+import com.my.gymbro.data.SerieEseguita
 import com.my.gymbro.data.Sessione
 import com.my.gymbro.ui.MetricaTrend
 import com.my.gymbro.ui.PeriodoReport
 import com.my.gymbro.ui.calcola
+import com.my.gymbro.ui.confrontaConStorico
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -81,6 +83,30 @@ class ReportCalcoloTest {
     @Test
     fun unaSettimanaInteraSaltata_azzera() {
         assertEquals(0, streakDiLunedi(10, 17))
+    }
+
+    @Test
+    fun macchinaAssistita_recordConMenoAiuto_senzaVolume() {
+        val assistita = riga(1, ieri).copy(nomeEsercizio = "Trazioni assistite alla macchina", pesoKg = 30f)
+        val adesso = SerieEseguita(sessioneId = 2, esercizioId = 1, numero = 1, ripetizioni = 10, pesoKg = 25f)
+        val confronto = confrontaConStorico(listOf(adesso), listOf(assistita)).getValue(1)
+        assertEquals(true, confronto.record)
+        assertEquals(null, confronto.deltaVolume)
+
+        val stato = calcolaTutto(listOf(assistita), listOf(Sessione(id = 1, nomeScheda = "A", dataInizio = ieri)))
+        assertEquals(0.0, stato.volumeTotale, 0.0)
+        assertEquals(null, stato.pr.single().pesoMax)
+    }
+
+    @Test
+    fun riepilogo_aTempo_recordSeTenutoPiuALungo_maiPerLoStretching() {
+        val plank = riga(1, ieri).copy(nomeEsercizio = "Plank", ripetizioni = null, pesoKg = null, durataSec = 35)
+        val adesso = SerieEseguita(sessioneId = 2, esercizioId = 1, numero = 1, durataSec = 40)
+        assertEquals(true, confrontaConStorico(listOf(adesso), listOf(plank)).getValue(1).record)
+        assertEquals(false, confrontaConStorico(listOf(adesso.copy(durataSec = 35)), listOf(plank)).getValue(1).record)
+
+        val stretching = plank.copy(gruppoMuscolare = GruppoMuscolare.STRETCHING, durataSec = 30)
+        assertEquals(false, confrontaConStorico(listOf(adesso), listOf(stretching)).getValue(1).record)
     }
 
     @Test

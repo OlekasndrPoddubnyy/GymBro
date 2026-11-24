@@ -16,9 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrightnessMedium
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.my.gymbro.ui.theme.StileTitoloSchermata
 import com.my.gymbro.GymBroApplication
 import com.my.gymbro.data.Tema
 
@@ -159,7 +158,7 @@ fun GymBroApp(
     }
 }
 
-/** Intestazione grande: sopratitolo maiuscolo + titolo condensato, menu tema a destra. */
+/** Intestazione grande: sopratitolo maiuscolo + titolo condensato, menu (tema e dati) a destra. */
 @Composable
 private fun IntestazioneSezione(sezione: Sezione, temaCorrente: Tema, onTema: (Tema) -> Unit) {
     Row(
@@ -171,30 +170,9 @@ private fun IntestazioneSezione(sezione: Sezione, temaCorrente: Tema, onTema: (T
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Sopratitolo(sezione.sopratitolo)
-            Text(sezione.label.uppercase(), style = MaterialTheme.typography.displaySmall)
+            Text(sezione.label, style = StileTitoloSchermata.copy(fontSize = 32.sp, lineHeight = 48.sp))
         }
-        MenuTema(temaCorrente, onTema)
-    }
-}
-
-@Composable
-private fun MenuTema(corrente: Tema, onTema: (Tema) -> Unit) {
-    var aperto by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { aperto = true }) {
-            Icon(Icons.Filled.BrightnessMedium, contentDescription = "Tema")
-        }
-        DropdownMenu(expanded = aperto, onDismissRequest = { aperto = false }) {
-            Tema.entries.forEach { t ->
-                DropdownMenuItem(
-                    text = { Text(t.label) },
-                    onClick = { onTema(t); aperto = false },
-                    leadingIcon = {
-                        if (t == corrente) Icon(Icons.Filled.Check, contentDescription = null)
-                    }
-                )
-            }
-        }
+        MenuApp(temaCorrente, onTema)
     }
 }
 

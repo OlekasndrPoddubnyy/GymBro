@@ -64,6 +64,11 @@ class Impostazioni(context: Context) {
         prefs.edit().putStringSet(CHIAVE_ELIMINATI, predefinitiEliminati + nome).apply()
     }
 
+    /** Dopo un ripristino valgono gli esercizi eliminati del backup. */
+    fun ripristinaPredefinitiEliminati(nomi: Set<String>) {
+        prefs.edit().putStringSet(CHIAVE_ELIMINATI, nomi).apply()
+    }
+
     private fun leggiTema(): Tema =
         prefs.getString(CHIAVE_TEMA, null)
             ?.let { runCatching { Tema.valueOf(it) }.getOrNull() }

@@ -79,6 +79,38 @@ class MemoriaBuddy(context: Context) {
         _dati.value = _dati.value.copy(impostazioni = i)
     }
 
+    /** Gli stessi progressi su un'altra scheda: la copia di una scheda riparte da dove era l'originale. */
+    fun copiaScheda(da: Long, a: Long) {
+        salva(
+            _dati.value.progressi
+                .filterKeys { it.schedaId == da }
+                .mapKeys { (k, _) -> ChiaveBuddy(a, k.esercizioId) }
+        )
+    }
+
+    /** Scheda eliminata: i suoi progressi non servono più. */
+    fun dimenticaScheda(id: Long) {
+        val chiavi = _dati.value.progressi.keys.filter { it.schedaId == id }
+        if (chiavi.isEmpty()) return
+        val editor = prefs.edit()
+        chiavi.forEach { editor.remove("$PREF_PROGRESSO${it.schedaId}:${it.esercizioId}") }
+        editor.apply()
+        _dati.value = _dati.value.copy(progressi = _dati.value.progressi - chiavi.toSet())
+    }
+
+    /** Il contenuto salvato, per il backup. */
+    fun esporta(): Map<String, String> =
+        prefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
+    /** Sostituisce tutto con il contenuto di un backup. */
+    fun ripristina(contenuto: Map<String, String>) {
+        val editor = prefs.edit().clear()
+        contenuto.forEach { (k, v) -> editor.putString(k, v) }
+        // commit, non apply: subito dopo si rilegge e il ripristino deve essere già su disco.
+        editor.commit()
+        _dati.value = leggi()
+    }
+
     /** Schede con un esercizio sostituito: l'aggiornamento delle schede predefinite non le sovrascrive. */
     fun schedePersonalizzate(): Set<Long> =
         _dati.value.progressi.filterValues { it.precedente != null }.keys.map { it.schedaId }.toSet()

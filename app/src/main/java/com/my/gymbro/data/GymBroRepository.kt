@@ -180,6 +180,53 @@ class GymBroRepository(private val db: GymBroDatabase) {
         dao.getSchedaConEsercizi(id).first()
 
     /**
+     * Salva tra le proprie una scheda arrivata da un QR. Gli esercizi si cercano per nome (prima
+     * esatto, poi senza maiuscole/minuscole); quelli che mancano si aggiungono alla libreria, con la
+     * descrizione del catalogo se è un esercizio predefinito che era stato eliminato.
+     * Se esiste già una scheda con lo stesso nome, la nuova diventa "Nome (condivisa)".
+     * Tutto in un'unica transazione. @return l'id della scheda salvata.
+     */
+    suspend fun importaSchedaCondivisa(s: SchedaCondivisa): Long = db.withTransaction {
+        val libreria = dao.tuttiEsercizi()
+        val esatti = libreria.associateBy { it.nome }
+        val senzaMaiuscole = libreria.groupBy { it.nome.lowercase() }.mapValues { it.value.first() }
+        val catalogo by lazy { eserciziPredefiniti().associateBy { it.nome } }
+        val idPerNome = HashMap<String, Long>()
+
+        val righe = s.esercizi.map { e ->
+            val id = idPerNome.getOrPut(e.nome.lowercase()) {
+                (esatti[e.nome] ?: senzaMaiuscole[e.nome.lowercase()])?.id
+                    ?: dao.insertEsercizio(
+                        Esercizio(
+                            nome = e.nome,
+                            gruppoMuscolare = e.gruppo,
+                            attrezzatura = e.attrezzatura,
+                            descrizione = catalogo[e.nome]?.descrizione,
+                        )
+                    )
+            }
+            EsercizioScheda(
+                schedaId = 0,
+                esercizioId = id,
+                modalita = e.modalita,
+                note = e.note,
+                gruppoSuperset = e.superset,
+            ) to e.serie.mapIndexed { i, r ->
+                SeriePianificata(
+                    esercizioSchedaId = 0,
+                    numero = i + 1,
+                    durataSec = r.durataSec,
+                    ripetizioni = r.ripetizioni,
+                    pesoKg = r.pesoKg,
+                    recuperoSec = r.recuperoSec,
+                )
+            }
+        }
+        val nome = nomeLibero(s.nome, dao.tutteSchede().mapTo(HashSet()) { it.nome })
+        dao.salvaSchedaConEsercizi(Scheda(nome = nome, note = s.note), righe)
+    }
+
+    /**
      * Mette [nuovoId] al posto di [vecchioId] nella scheda, con le stesse serie: cambiano il carico
      * e le note, che valevano per l'esercizio sostituito. Lo storico non si tocca.
      *
@@ -241,7 +288,13 @@ class GymBroRepository(private val db: GymBroDatabase) {
 
     suspend fun avviaSessione(s: Sessione): Long = dao.insertSessione(s)
     suspend fun terminaSessione(id: Long, fine: Long) = dao.chiudiSessione(id, fine)
-    suspend fun registraSerie(s: SerieEseguita): Long = dao.insertSerieEseguita(s)
+    /** Salva la serie e porta la fine della sessione a [ora]: se l'allenamento si interrompe, la durata resta. */
+    suspend fun registraSerie(s: SerieEseguita, ora: Long = System.currentTimeMillis()): Long =
+        db.withTransaction {
+            val id = dao.insertSerieEseguita(s)
+            dao.estendiSessione(s.sessioneId, ora)
+            id
+        }
 
     /** Elimina una sessione senza serie (allenamento chiuso prima di farne anche solo una). */
     suspend fun scartaSessioneVuota(id: Long) = dao.deleteSessioneVuota(id)
@@ -251,4 +304,47 @@ class GymBroRepository(private val db: GymBroDatabase) {
 
     // Report
     fun righeReport(): Flow<List<RigaReport>> = dao.getRigheReport()
+
+    // Backup
+
+    /** Tutte le righe del database, lette insieme: il backup non mescola stati diversi. */
+    suspend fun leggiPerBackup(
+        buddy: Map<String, String>,
+        predefinitiEliminati: Set<String>,
+    ): DatiBackup = db.withTransaction {
+        DatiBackup(
+            creatoIl = System.currentTimeMillis(),
+            esercizi = dao.tuttiEsercizi(),
+            schede = dao.tutteSchede(),
+            eserciziScheda = dao.tuttiEserciziScheda(),
+            seriePianificate = dao.tutteSeriePianificate(),
+            sessioni = dao.tutteSessioni(),
+            serieEseguite = dao.tutteSerieEseguite(),
+            buddy = buddy,
+            predefinitiEliminati = predefinitiEliminati,
+        )
+    }
+
+    /**
+     * Sostituisce tutto il database con [d], con gli stessi id. In un'unica transazione: se una riga
+     * non va (es. riferimento a un esercizio che non c'è) non cambia niente.
+     * [immagineEsiste] dice se il file di una foto è su questo telefono: se manca, si toglie il percorso.
+     */
+    suspend fun ripristina(d: DatiBackup, immagineEsiste: (String) -> Boolean) = db.withTransaction {
+        dao.svuotaSerieEseguite()
+        dao.svuotaSessioni()
+        dao.svuotaSeriePianificate()
+        dao.svuotaEserciziScheda()
+        dao.svuotaSchede()
+        dao.svuotaEsercizi()
+        dao.insertEsercizi(d.esercizi.map { e ->
+            val path = e.immaginePath
+            if (path.isNullOrBlank() || immagineEsiste(path)) e else e.copy(immaginePath = null)
+        })
+        dao.insertSchede(d.schede)
+        dao.insertEserciziScheda(d.eserciziScheda)
+        dao.insertSerie(d.seriePianificate)
+        dao.insertSessioni(d.sessioni)
+        dao.insertSerieEseguite(d.serieEseguite)
+    }
 }

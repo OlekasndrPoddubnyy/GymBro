@@ -10,6 +10,7 @@ import com.my.gymbro.data.GruppoMuscolare
 import com.my.gymbro.data.GymBroRepository
 import com.my.gymbro.data.RigaReport
 import com.my.gymbro.data.Sessione
+import com.my.gymbro.data.caricoInverso
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -135,8 +136,10 @@ private fun giornoDi(ms: Long): LocalDate =
 private fun inizioSettimana(d: LocalDate): LocalDate =
     d.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
+/** Sulle macchine assistite il peso è aiuto: non è volume sollevato. */
 private fun volumeRiga(r: RigaReport): Double =
-    (r.pesoKg?.toDouble() ?: 0.0) * (r.ripetizioni?.toDouble() ?: 0.0)
+    if (caricoInverso(r.nomeEsercizio)) 0.0
+    else (r.pesoKg?.toDouble() ?: 0.0) * (r.ripetizioni?.toDouble() ?: 0.0)
 
 private fun descriviRiga(r: RigaReport): String = when {
     r.durataSec != null -> "${r.durataSec}s"
@@ -237,19 +240,21 @@ internal fun calcola(
     // ---- PR con 1RM stimato (Epley) (periodo) ----
     val pr = righeF.groupBy { it.esercizioId }
         .map { (id, rs) ->
-            val stime = rs.mapNotNull { r ->
+            // Macchine assistite: più peso = più aiuto, quindi niente massimale né peso record.
+            val inverso = caricoInverso(rs.first().nomeEsercizio)
+            val stime = if (inverso) emptyList() else rs.mapNotNull { r ->
                 val p = r.pesoKg ?: return@mapNotNull null
                 val rip = r.ripetizioni ?: return@mapNotNull null
                 if (rip <= 0) null else r to p * (1f + rip / 30f)
             }
             // La riga del record: miglior 1RM stimato; senza pesi, il maggior numero di ripetizioni.
             val migliore = stime.maxByOrNull { it.second }?.first
-                ?: rs.maxByOrNull { it.pesoKg ?: 0f }?.takeIf { it.pesoKg != null }
+                ?: rs.maxByOrNull { it.pesoKg ?: 0f }?.takeIf { !inverso && it.pesoKg != null }
                 ?: rs.maxBy { it.ripetizioni ?: it.durataSec ?: 0 }
             RecordEsercizio(
                 id = id,
                 nome = rs.first().nomeEsercizio,
-                pesoMax = rs.mapNotNull { it.pesoKg }.maxOrNull(),
+                pesoMax = if (inverso) null else rs.mapNotNull { it.pesoKg }.maxOrNull(),
                 ripMax = rs.mapNotNull { it.ripetizioni }.maxOrNull(),
                 e1rm = stime.maxOfOrNull { it.second },
                 dataMs = migliore.dataInizio,

@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +44,9 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
         SchedeNav.Lista -> ListaSchede(
             schede = schede,
             onNuova = { vm.apriEditor(null) },
+            onScansiona = vm::apriScansione,
             onApri = { vm.apri(it.id) },
+            onCondividi = { vm.condividi(it.id) },
             onDuplica = { vm.duplica(it) },
             onElimina = { vm.elimina(it) }
         )
@@ -53,9 +57,25 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
                 scheda = scheda,
                 onIndietro = { vm.mostraLista() },
                 onModifica = { vm.apriEditor(n.schedaId) },
+                onCondividi = { vm.condividi(n.schedaId) },
                 onInizia = { onAvviaAllenamento(n.schedaId) }
             )
         }
+
+        SchedeNav.Scansione -> ScansioneQr(
+            onLetto = vm::qrLetto,
+            onFotoSenzaQr = vm::fotoSenzaQr,
+            onIndietro = vm::mostraLista
+        )
+
+        is SchedeNav.Anteprima -> AnteprimaSchedaCondivisa(
+            scheda = n.scheda,
+            nomiLibreria = remember(libreria) { libreria.map { it.nome } },
+            nomiSchede = remember(schede) { schede.mapTo(HashSet()) { it.nome } },
+            salvando = vm.salvandoCondivisa,
+            onSalva = vm::salvaCondivisa,
+            onIndietro = vm::mostraLista
+        )
 
         is SchedeNav.Editor -> {
             val bozza = vm.bozza
@@ -83,13 +103,25 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
             }
         }
     }
+
+    vm.qr?.let { DialogoQr(it, onChiudi = vm::chiudiQr) }
+    vm.erroreQr?.let { errore ->
+        AlertDialog(
+            onDismissRequest = vm::chiudiErroreQr,
+            title = { Text("QR non letto") },
+            text = { Text(errore) },
+            confirmButton = { TextButton(onClick = vm::chiudiErroreQr) { Text("OK") } }
+        )
+    }
 }
 
 @Composable
 private fun ListaSchede(
     schede: List<Scheda>,
     onNuova: () -> Unit,
+    onScansiona: () -> Unit,
     onApri: (Scheda) -> Unit,
+    onCondividi: (Scheda) -> Unit,
     onDuplica: (Scheda) -> Unit,
     onElimina: (Scheda) -> Unit,
 ) {
@@ -100,20 +132,30 @@ private fun ListaSchede(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNuova,
-                shape = RoundedCornerShape(20.dp),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Nuova scheda", style = MaterialTheme.typography.titleSmall) }
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SmallFloatingActionButton(
+                    onClick = onScansiona,
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
+                    Icon(Icons.Filled.QrCodeScanner, contentDescription = "Scansiona il QR di una scheda")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = onNuova,
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("Nuova scheda", style = MaterialTheme.typography.titleSmall) }
+                )
+            }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             if (schede.isEmpty()) {
                 Text(
-                    "Nessuna scheda.\nTocca + per crearne una.",
+                    "Nessuna scheda.\nTocca + per crearne una,\no inquadra il QR di un amico.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -130,6 +172,7 @@ private fun ListaSchede(
                             numero = i + 1,
                             scheda = s,
                             onClick = { onApri(s) },
+                            onCondividi = { onCondividi(s) },
                             onDuplica = { onDuplica(s) },
                             onElimina = { daEliminare = s },
                             modifier = Modifier.animateItem()
@@ -161,6 +204,7 @@ private fun SchedaCard(
     numero: Int,
     scheda: Scheda,
     onClick: () -> Unit,
+    onCondividi: () -> Unit,
     onDuplica: () -> Unit,
     onElimina: () -> Unit,
     modifier: Modifier = Modifier,
@@ -202,6 +246,7 @@ private fun SchedaCard(
                     Icon(Icons.Filled.MoreVert, contentDescription = "Opzioni")
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Condividi con QR") }, onClick = { menu = false; onCondividi() })
                     DropdownMenuItem(text = { Text("Duplica") }, onClick = { menu = false; onDuplica() })
                     DropdownMenuItem(text = { Text("Elimina") }, onClick = { menu = false; onElimina() })
                 }
@@ -215,6 +260,7 @@ private fun SchedaDettaglio(
     scheda: SchedaConEsercizi?,
     onIndietro: () -> Unit,
     onModifica: () -> Unit,
+    onCondividi: () -> Unit,
     onInizia: () -> Unit,
 ) {
     BackHandler(onBack = onIndietro)
@@ -225,6 +271,9 @@ private fun SchedaDettaglio(
             sopratitolo = "Dettaglio allenamento",
             onIndietro = onIndietro
         ) {
+            if (scheda?.esercizi?.isNotEmpty() == true) {
+                BottoneIcona(Icons.Filled.QrCode2, "Condividi con QR", onCondividi)
+            }
             BottoneSecondario(
                 testo = "Modifica",
                 onClick = onModifica,
@@ -387,7 +436,7 @@ private fun Legenda(colore: Color, testo: String) {
     }
 }
 
-private fun riassuntoSerie(
+internal fun riassuntoSerie(
     modalita: Modalita,
     durataSec: Int?,
     ripetizioni: String?,

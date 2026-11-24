@@ -14,6 +14,7 @@ import com.my.gymbro.data.ProgressoBuddy
 import com.my.gymbro.data.SerieEseguita
 import com.my.gymbro.data.SerieFatta
 import com.my.gymbro.data.Sessione
+import com.my.gymbro.data.caricoInverso
 import com.my.gymbro.data.dopoAllenamento
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -425,9 +426,14 @@ object AllenamentoEngine {
             // Sostituito durante l'allenamento: non si può giudicare.
             if (seriePerEsercizio(s.esercizi, id) != previste) continue
             val chiave = ChiaveBuddy(schedaId, id)
-            val progresso = memoria.progresso(chiave) ?: continue
+            val salvato = memoria.progresso(chiave) ?: continue
             // Obiettivo cambiato nel frattempo: le serie erano fatte su quello vecchio.
-            if (progresso.stato?.obiettivo != obiettivo) continue
+            if (salvato.stato?.obiettivo != obiettivo) continue
+            // Il verso del carico non è salvato: vale quello dell'esercizio fatto.
+            val nome = s.esercizi.firstOrNull { it.esercizioId == id }?.nome ?: s.nomiEseguiti[id]
+            val progresso = salvato.copy(
+                regole = salvato.regole.copy(caricoInverso = nome != null && caricoInverso(nome))
+            )
             val fatte = s.log
                 .filter { it.esercizioId == id && it.durataSec == null }
                 .map { SerieFatta(it.ripetizioni ?: 0, it.pesoKg?.takeIf { kg -> kg > 0f }) }

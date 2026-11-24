@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Vibrazione a fine fase e negli ultimi 3 secondi -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Inquadrare il QR di una scheda condivisa (chiesta solo quando si apre lo scanner) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Senza fotocamera l'app funziona lo stesso: il QR si può leggere da una foto -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".GymBroApplication"
@@ -41,6 +45,17 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBCATEGORY"
                 android:value="Interval, rest and workout timer that keeps running while the screen is off or the app is in background" />
         </service>
+
+        <!-- Passa l'immagine del QR alle altre app (WhatsApp, email…) senza permessi sui file -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

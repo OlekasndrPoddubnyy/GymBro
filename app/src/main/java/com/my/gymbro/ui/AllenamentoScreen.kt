@@ -76,6 +76,8 @@ private fun EsecuzioneAttiva(
     val libreria by vm.libreria.collectAsStateWithLifecycle()
     // L'esercizio si fissa all'apertura: mentre si sceglie, una serie a tempo può finire e passare al successivo.
     var daSostituire by remember { mutableStateOf<Int?>(null) }
+    // Dopo una sostituzione: l'esercizio di prima e quello nuovo, per chiedere se salvarla nella scheda.
+    var anchePerScheda by remember { mutableStateOf<Pair<EsercizioEsec, Esercizio>?>(null) }
     var confermaTermina by remember { mutableStateOf(false) }
 
     if (confermaTermina) {
@@ -224,12 +226,48 @@ private fun EsecuzioneAttiva(
         SostituzioneSheet(
             libreria = libreria,
             onScelto = { es ->
+                val vecchio = stato.esercizi.getOrNull(indice)
                 vm.sostituisci(indice, es)
+                if (vecchio != null && vecchio.esercizioId != es.id) anchePerScheda = vecchio to es
                 daSostituire = null
             },
             onDismiss = { daSostituire = null }
         )
     }
+
+    anchePerScheda?.let { (vecchio, nuovo) ->
+        val buddy: GymBuddyViewModel = viewModel(factory = GymBuddyViewModel.Factory)
+        // Raccolta qui, così l'ultimo carico usato è già caricato quando si conferma.
+        val vista by buddy.vista.collectAsStateWithLifecycle()
+        val schedaId by AllenamentoEngine.schedaInCorso.collectAsStateWithLifecycle()
+        AlertDialog(
+            onDismissRequest = { anchePerScheda = null },
+            title = { Text("Cambiarlo anche nella scheda?") },
+            text = {
+                Text(
+                    "Per oggi fai \"${nuovo.nome}\" al posto di \"${vecchio.nome}\". " +
+                        "Vuoi che resti così anche nei prossimi allenamenti di \"${stato.nomeScheda}\"? " +
+                        "Potrai tornare indietro dal dettaglio della scheda."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    schedaId?.let { id ->
+                        buddy.sostituisci(
+                            schedaId = id,
+                            vecchioId = vecchio.esercizioId,
+                            ripetizioni = vecchio.serie.firstOrNull()?.ripetizioniPianificate,
+                            nuovo = nuovo,
+                            carico = vista.ultimoCarico[nuovo.id],
+                        )
+                    }
+                    anchePerScheda = null
+                }) { Text("Anche nella scheda") }
+            },
+            dismissButton = { TextButton(onClick = { anchePerScheda = null }) { Text("Solo oggi") } },
+        )
+    }
+    ErroreGymBuddy()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -508,9 +546,7 @@ private fun FotoEsercizio(es: EsercizioEsec) {
 @Composable
 private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
     val perEsercizio = remember(stato.log) { stato.log.groupBy { it.esercizioId } }
-    val volume = remember(stato.log) {
-        stato.log.sumOf { ((it.pesoKg ?: 0f) * (it.ripetizioni ?: 0)).toDouble() }
-    }
+    val volume = remember(stato.log, stato.nomiEseguiti) { volumeSerie(stato, stato.log) }
     val confronto = confrontoConStorico(stato.log)
     val record = confronto.values.count { it.record }
     val muscoli = remember(stato.log, stato.esercizi) { muscoliAllenamento(stato) }
@@ -604,7 +640,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
                             }
                         }
                         // Volume dell'esercizio e confronto con l'ultima volta
-                        val volEs = serie.sumOf { ((it.pesoKg ?: 0f) * (it.ripetizioni ?: 0)).toDouble() }
+                        val volEs = volumeSerie(stato, serie)
                         if (volEs > 0) {
                             val delta = conf?.deltaVolume
                             val confrontoTesto = when {

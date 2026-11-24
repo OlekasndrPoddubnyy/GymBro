@@ -237,6 +237,7 @@ private fun descriviProposta(p: Proposta): String = when (p) {
     is Proposta.PiuPeso -> "Aumenta il peso: ${descriviObiettivo(p.obiettivo)}"
     is Proposta.Scarico -> "Tre sessioni incomplete: scarica a ${descriviObiettivo(p.obiettivo)}"
     is Proposta.CorreggiCarico -> "Usa il carico provato: ${descriviObiettivo(p.obiettivo)}"
+    is Proposta.MenoAiuto -> "Riduci l'aiuto della macchina: ${descriviObiettivo(p.obiettivo)}"
     Proposta.VariantePiuDifficile -> "Sei a fine range: aggiungi peso (segnalo quando fai la serie) o passa a una variante più difficile"
 }
 
