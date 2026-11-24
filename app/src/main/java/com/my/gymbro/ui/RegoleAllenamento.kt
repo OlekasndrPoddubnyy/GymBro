@@ -13,6 +13,9 @@ private const val SEC_SERIE_STIMATA = 40
 /** Secondi stimati per il cambio tra un esercizio (o superset) e il successivo. */
 private const val SEC_CAMBIO_ESERCIZIO = 45
 
+/** Conto alla rovescia prima di ogni serie a tempo (plank, stretching…), per mettersi in posizione. */
+internal const val SEC_VIA_SERIE_A_TEMPO = 5
+
 /** Entro questo intervallo un secondo tocco su Completa/Salta è considerato involontario. */
 private const val MS_DOPPIO_TOCCO = 700L
 
@@ -106,7 +109,8 @@ internal data class StimaTempi(val lavoroSec: Int, val recuperoSec: Int, val ser
 
 /**
  * Segue gli stessi passi del motore: recupero tra le serie (nei superset solo a fine giro) e, al
- * cambio di esercizio, l'attesa di "Inizia" al posto del recupero.
+ * cambio di esercizio, l'attesa di "Inizia" al posto del recupero. Prima delle serie a tempo si
+ * aggiunge il conto alla rovescia, tranne che per la prima, coperta dalla preparazione iniziale.
  */
 internal fun stimaTempi(esercizi: List<EsercizioEsec>): StimaTempi {
     val passi = costruisciPassi(esercizi)
@@ -118,5 +122,6 @@ internal fun stimaTempi(esercizi: List<EsercizioEsec>): StimaTempi {
     val recupero = passi.zipWithNext().sumOf { (corrente, prossimo) ->
         if (prossimo.attesaPrima) SEC_CAMBIO_ESERCIZIO else corrente.recuperoDopo
     }
-    return StimaTempi(lavoro, recupero, passi.size)
+    val partenze = passi.drop(1).count { esercizi[it.idxEsercizio].modalita == Modalita.TEMPO }
+    return StimaTempi(lavoro, recupero + partenze * SEC_VIA_SERIE_A_TEMPO, passi.size)
 }

@@ -331,6 +331,7 @@ private fun SchedaDettaglio(
             }
         }
 
+        ErroreGymBuddy()
         Box(Modifier.fillMaxWidth().padding(16.dp)) {
             BottonePrincipale(
                 testo = "Inizia allenamento",

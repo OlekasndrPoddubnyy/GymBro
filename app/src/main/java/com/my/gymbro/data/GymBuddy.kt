@@ -53,7 +53,8 @@ data class StatoBuddy(
  */
 fun StatoBuddy.dopoSessione(regole: RegoleBuddy, seriePreviste: Int, fatte: List<SerieFatta>): StatoBuddy {
     if (fatte.isEmpty()) return this
-    if (calibrazione) {
+    // Senza carico in obiettivo (es. iperestensioni) si progredisce a ripetizioni finché non si usa un peso.
+    if (calibrazione || obiettivo.caricoKg == null) {
         val usato = fatte.last().caricoKg
         if (usato != null && usato != obiettivo.caricoKg) {
             return copy(

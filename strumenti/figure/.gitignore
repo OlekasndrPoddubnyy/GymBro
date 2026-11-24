@@ -1,0 +1,4 @@
+# profilo Blender con MPFB e risorse (circa 330 MB) e render di lavoro
+profilo/
+out/
+__pycache__/

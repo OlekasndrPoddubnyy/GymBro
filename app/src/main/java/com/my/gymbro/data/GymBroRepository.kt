@@ -55,7 +55,7 @@ class GymBroRepository(private val db: GymBroDatabase) {
     /**
      * Allinea le schede predefinite ([schedePredefinite]):
      *  - inserisce quelle che non esistono ancora (per nome);
-     *  - quelle già presenti (stesso nome) vengono sostituite con la versione attuale.
+     *  - quelle già presenti (stesso nome) passano alla versione attuale, con copia di quella precedente.
      * Gli esercizi vengono cercati per nome nella libreria; quelli mancanti vengono saltati.
      * Le schede create dall'utente non vengono mai toccate, e nemmeno quelle in cui ha sostituito
      * un esercizio ([personalizzate]).
@@ -82,9 +82,11 @@ class GymBroRepository(private val db: GymBroDatabase) {
     }
 
     /**
-     * Sostituisce per intero il contenuto di una scheda predefinita già salvata con la versione
-     * attuale del template (esercizi, serie e note). La riga della scheda resta la stessa, così lo
-     * storico degli allenamenti già fatti continua a riferirsi a lei.
+     * Porta una scheda predefinita già salvata alla versione attuale del template (esercizi, serie
+     * e note), senza perdere quello che l'utente ci aveva messo:
+     *  - la versione di prima, con le eventuali modifiche, resta come copia "(versione precedente)";
+     *  - gli esercizi che restano tengono i pesi salvati.
+     * La riga della scheda resta la stessa, così lo storico continua a riferirsi a lei.
      */
     private suspend fun aggiornaSchedaEsistente(
         schedaId: Long,
@@ -92,10 +94,40 @@ class GymBroRepository(private val db: GymBroDatabase) {
         perNome: Map<String, Esercizio>,
     ) {
         val completa = dao.schedaConEserciziOra(schedaId) ?: return
-        val righe = righeDaTemplate(template.esercizi, perNome)
-        if (righe.isEmpty()) return
-        dao.salvaSchedaConEsercizi(completa.scheda.copy(note = template.note), righe)
+        val modello = righeDaTemplate(template.esercizi, perNome)
+        if (modello.isEmpty()) return
+
+        val attuali = completa.esercizi
+            .sortedBy { it.esercizioScheda.ordine }
+            .map { ec -> ec.esercizioScheda to ec.serie.sortedBy { it.numero } }
+        val pesiSalvati = attuali.associate { (riga, serie) -> riga.esercizioId to serie.map { it.pesoKg } }
+        val nuove = modello.map { (riga, serie) ->
+            val pesi = pesiSalvati[riga.esercizioId].orEmpty()
+            riga to serie.mapIndexed { i, s ->
+                // Una serie in più prende il peso dell'ultima salvata.
+                s.copy(pesoKg = pesi.getOrNull(i) ?: pesi.lastOrNull() ?: s.pesoKg)
+            }
+        }
+
+        val scheda = completa.scheda
+        if (scheda.note == template.note && senzaId(attuali) == senzaId(nuove)) return
+        if (attuali.isNotEmpty()) {
+            val copia = scheda.copy(
+                id = 0,
+                nome = "${scheda.nome} (versione precedente)",
+                // La lista va dalla più recente: le copie restano sotto le schede attuali.
+                dataCreazione = scheda.dataCreazione - 24 * 60 * 60 * 1000L,
+            )
+            dao.salvaSchedaConEsercizi(copia, attuali)
+        }
+        dao.salvaSchedaConEsercizi(scheda.copy(note = template.note), nuove)
     }
+
+    /** Le righe senza id e posizione salvata, per confrontare solo il contenuto. */
+    private fun senzaId(righe: List<Pair<EsercizioScheda, List<SeriePianificata>>>) =
+        righe.map { (riga, serie) ->
+            riga.copy(id = 0, schedaId = 0, ordine = 0) to serie.map { it.copy(id = 0, esercizioSchedaId = 0) }
+        }
 
     /** Converte gli esercizi di un template nelle righe da salvare (superset inclusi). */
     private fun righeDaTemplate(

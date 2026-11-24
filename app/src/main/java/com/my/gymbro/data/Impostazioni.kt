@@ -11,6 +11,12 @@ enum class Tema(val label: String) {
     SCURO("Scuro")
 }
 
+/** Persona mostrata nella mappa dei muscoli. */
+enum class Figura(val label: String) {
+    UOMO("Uomo"),
+    DONNA("Donna")
+}
+
 /** Preferenze locali dell'app (offline), salvate su SharedPreferences. */
 class Impostazioni(context: Context) {
     private val prefs = context.getSharedPreferences("gymbro_prefs", Context.MODE_PRIVATE)
@@ -21,6 +27,14 @@ class Impostazioni(context: Context) {
     fun impostaTema(t: Tema) {
         prefs.edit().putString(CHIAVE_TEMA, t.name).apply()
         _tema.value = t
+    }
+
+    private val _figura = MutableStateFlow(leggiFigura())
+    val figura: StateFlow<Figura> = _figura.asStateFlow()
+
+    fun impostaFigura(f: Figura) {
+        prefs.edit().putString(CHIAVE_FIGURA, f.name).apply()
+        _figura.value = f
     }
 
     /** Versione del set di esercizi predefiniti già inserito (per il seeding incrementale). */
@@ -50,8 +64,14 @@ class Impostazioni(context: Context) {
             ?.let { runCatching { Tema.valueOf(it) }.getOrNull() }
             ?: Tema.SISTEMA
 
+    private fun leggiFigura(): Figura =
+        prefs.getString(CHIAVE_FIGURA, null)
+            ?.let { runCatching { Figura.valueOf(it) }.getOrNull() }
+            ?: Figura.UOMO
+
     private companion object {
         const val CHIAVE_TEMA = "tema"
+        const val CHIAVE_FIGURA = "figura_mappa"
         const val CHIAVE_SEED = "seed_version"
         const val CHIAVE_SCHEDE = "schede_version"
         const val CHIAVE_ELIMINATI = "predefiniti_eliminati"

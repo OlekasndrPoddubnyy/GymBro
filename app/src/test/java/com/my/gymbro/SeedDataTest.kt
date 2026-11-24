@@ -3,6 +3,7 @@ package com.my.gymbro
 import com.my.gymbro.data.descrizioneSenzaMacchina
 import com.my.gymbro.data.eserciziPredefiniti
 import com.my.gymbro.data.macchinaTechnogym
+import com.my.gymbro.data.schedePredefinite
 import com.my.gymbro.data.slugEsercizio
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -34,6 +35,16 @@ class SeedDataTest {
         val mancanti = seed.mapNotNull { it.immaginePath }
             .filterNot { File(cartella, "$it/0.jpg").isFile }
         assertTrue("Cartelle immagini inesistenti: $mancanti", mancanti.isEmpty())
+    }
+
+    @Test
+    fun schedePredefinite_esistonoInCatalogoESenzaDoppioni() {
+        val nomi = seed.map { it.nome }.toSet()
+        for (scheda in schedePredefinite()) {
+            val usati = scheda.esercizi.map { it.nomeEsercizio }
+            assertEquals("${scheda.nome}: non in catalogo", emptyList<String>(), usati.filterNot { it in nomi })
+            assertEquals("${scheda.nome}: esercizi ripetuti", usati.distinct(), usati)
+        }
     }
 
     @Test

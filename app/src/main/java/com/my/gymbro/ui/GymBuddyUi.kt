@@ -74,6 +74,12 @@ internal fun GymBuddyScheda(scheda: SchedaConEsercizi) {
             onAnnulla = { impostazioni = false },
         )
     }
+}
+
+/** Fuori dalla lista della scheda: lì dentro, scorrendo, il dialogo non verrebbe composto. */
+@Composable
+internal fun ErroreGymBuddy() {
+    val vm: GymBuddyViewModel = viewModel(factory = GymBuddyViewModel.Factory)
     vm.errore?.let { errore ->
         AlertDialog(
             onDismissRequest = vm::chiudiErrore,
@@ -231,7 +237,7 @@ private fun descriviProposta(p: Proposta): String = when (p) {
     is Proposta.PiuPeso -> "Aumenta il peso: ${descriviObiettivo(p.obiettivo)}"
     is Proposta.Scarico -> "Tre sessioni incomplete: scarica a ${descriviObiettivo(p.obiettivo)}"
     is Proposta.CorreggiCarico -> "Usa il carico provato: ${descriviObiettivo(p.obiettivo)}"
-    Proposta.VariantePiuDifficile -> "Sei a fine range: aggiungi zavorra o passa a una variante più difficile"
+    Proposta.VariantePiuDifficile -> "Sei a fine range: aggiungi peso (segnalo quando fai la serie) o passa a una variante più difficile"
 }
 
 internal fun descriviObiettivo(o: Obiettivo): String =

@@ -15,8 +15,8 @@ import kotlinx.coroutines.launch
 /** Versione della libreria esercizi predefiniti. v12: catalogo Technogym (Selection/Element+), multipower, cavi, pesi liberi e corpo libero ampliati. */
 private const val VERSIONE_ESERCIZI = 12
 
-/** Versione delle schede predefinite. v4–v11: schede Total body A/B/C. Aumentarla SOLO quando cambiano i template in SchedePredefinite.kt (sovrascrive le schede omonime). */
-private const val VERSIONE_SCHEDE = 11
+/** Versione delle schede predefinite. v4–v11: schede Total body A/B/C; v12: giovedì e venerdì senza doppioni, polpacci, B più corta. Aumentarla SOLO quando cambiano i template in SchedePredefinite.kt (aggiorna le schede omonime, tenendone una copia). */
+private const val VERSIONE_SCHEDE = 12
 
 private const val TAG = "GymBro"
 

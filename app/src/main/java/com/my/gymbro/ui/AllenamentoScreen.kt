@@ -144,7 +144,9 @@ private fun EsecuzioneAttiva(
                     Etichetta("Preparati")
                     Cronometro(stato.secondiRimanenti)
                     stato.esercizioCorrente?.let { es ->
-                        Text("Inizia con: ${es.nome}", style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                        Text(es.nome, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                        // Con i lati alternati è il numero della serie a dire da che parte mettersi.
+                        Text("Serie ${stato.indiceSerie + 1} di ${es.serie.size}", style = MaterialTheme.typography.bodyMedium)
                         FotoEsercizio(es)
                     }
                     BottoneSecondario("Salta", { vm.saltaPreparazione() }, icona = Icons.Filled.SkipNext)

@@ -88,6 +88,14 @@ class GymBuddyTest {
     }
 
     @Test
+    fun senzaCarico_progredisceARipetizioni_ePoiPrendeIlPesoUsato() {
+        val s = StatoBuddy(Obiettivo(8, null), calibrazione = true).fai(8, 8, 8)
+        assertEquals(1, s.completeDiFila)
+        assertEquals(Proposta.PiuRipetizioni(Obiettivo(10, null)), s.fai(8, 8, 8).proposta)
+        assertEquals(Proposta.CorreggiCarico(Obiettivo(8, 5f)), s.fai(8, 8, 8, kg = 5f).proposta)
+    }
+
+    @Test
     fun ultimoPasso_arrivaAlMassimo() {
         val r = regole.copy(ripMin = 12, ripMax = 15, conferme = 1)
         val a14 = StatoBuddy(Obiettivo(12, 20f)).fai(12, 12, 12, r = r).accetta()

@@ -169,7 +169,7 @@ object AllenamentoEngine {
             // il servizio in primo piano: conteggio, beep e vibrazione proseguono in background.
             AllenamentoAttivo.aggiorna(AllenamentoAttivo.Info(nome, descriviEsecuzione(_stato.value)))
             TimerService.start(appContext)
-            avviaCountdown(SEC_PREPARAZIONE) { iniziaPasso() }
+            avviaCountdown(SEC_PREPARAZIONE) { finePreparazione() }
         }
     }
 
@@ -215,7 +215,7 @@ object AllenamentoEngine {
     }
 
     fun saltaPreparazione() {
-        if (_stato.value.fase == Fase.PREPARAZIONE) iniziaPasso()
+        if (_stato.value.fase == Fase.PREPARAZIONE && doppioTocco.accetta()) avviaSerie()
     }
 
     fun iniziaProssimo() {
@@ -307,7 +307,23 @@ object AllenamentoEngine {
 
     // ---------- transizioni interne ----------
 
+    /** Tocca alla serie corrente: se è a tempo prima c'è il conto alla rovescia, altrimenti parte subito. */
     private fun iniziaPasso() {
+        if (_stato.value.esercizioCorrente?.modalita != Modalita.TEMPO) return avviaSerie()
+        // Il "Salta" della preparazione compare sotto il dito che ha appena toccato "Inizia".
+        doppioTocco.segna()
+        _stato.update { it.copy(fase = Fase.PREPARAZIONE) }
+        avviaCountdown(SEC_VIA_SERIE_A_TEMPO) { finePreparazione() }
+    }
+
+    private fun finePreparazione() {
+        // Un tocco su "Salta" arrivato allo scadere non deve saltare o completare la serie appena partita.
+        doppioTocco.segna()
+        avviaSerie()
+    }
+
+    /** La serie comincia davvero: da qui corre il suo tempo. */
+    private fun avviaSerie() {
         val s = _stato.value
         val passo = passi.getOrNull(s.indicePasso) ?: return terminaAllenamento()
         val es = s.esercizi.getOrNull(passo.idxEsercizio) ?: return terminaAllenamento()
