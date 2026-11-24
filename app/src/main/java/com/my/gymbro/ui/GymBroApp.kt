@@ -106,7 +106,9 @@ fun GymBroApp(
             }
           }
         },
-        containerColor = cs.background,
+        // Fondo con la magnesite sparsa dietro a tutte le sezioni (le sezioni sono trasparenti).
+        modifier = Modifier.fillMaxSize().sfondoApp(),
+        containerColor = Color.Transparent,
         contentColor = cs.onSurface
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {

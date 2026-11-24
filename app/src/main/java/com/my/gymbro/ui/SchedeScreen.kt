@@ -212,7 +212,7 @@ private fun SchedaCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().magnesite(RoundedCornerShape(20.dp)),
         shape = RoundedCornerShape(20.dp),
         colors = coloriCard(),
         border = bordoCard(),
@@ -314,7 +314,7 @@ private fun SchedaDettaglio(
             }
             itemsIndexed(esercizi, key = { _, it -> it.esercizioScheda.id }) { i, ec ->
                 Card(
-                    Modifier.fillMaxWidth().animateItem(),
+                    Modifier.fillMaxWidth().animateItem().magnesite(RoundedCornerShape(18.dp)),
                     shape = RoundedCornerShape(18.dp),
                     colors = coloriCard(),
                     border = bordoCard(),
@@ -396,7 +396,7 @@ private fun SchedaDettaglio(
 @Composable
 private fun RiassuntoTempo(stima: StimaTempi, numEsercizi: Int) {
     val cs = MaterialTheme.colorScheme
-    Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer, border = bordoCard()) {
+    Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer, border = bordoCard(), modifier = Modifier.magnesite(RoundedCornerShape(24.dp))) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {

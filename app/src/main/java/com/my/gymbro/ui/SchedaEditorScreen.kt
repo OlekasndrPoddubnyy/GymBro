@@ -215,7 +215,7 @@ private fun EsercizioEditorCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier.fillMaxWidth(),
+        modifier.fillMaxWidth().magnesite(RoundedCornerShape(20.dp)),
         shape = RoundedCornerShape(20.dp),
         colors = coloriCard(),
         border = bordoCard(),

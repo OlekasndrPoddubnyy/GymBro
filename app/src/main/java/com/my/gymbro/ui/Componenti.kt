@@ -38,11 +38,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.my.gymbro.ui.theme.ChiaroCard
+import com.my.gymbro.ui.theme.ChiaroSfondo
+import com.my.gymbro.ui.theme.ChiaroTesto
+import com.my.gymbro.ui.theme.ScuroCard
+import com.my.gymbro.ui.theme.ScuroSfondo
+import com.my.gymbro.ui.theme.ScuroTesto
+import com.my.gymbro.ui.theme.Vermiglio
+import com.my.gymbro.ui.theme.VermiglioTesto
 import com.my.gymbro.ui.theme.StileSopratitolo
 import com.my.gymbro.ui.theme.StileTitoloSchermata
 import com.my.gymbro.ui.theme.StileTitoloSezione
 
-/** Bottone principale lime a tutta larghezza (azione primaria della schermata). */
+/** Bottone principale (carta su inchiostro) a tutta larghezza (azione primaria della schermata). */
 @Composable
 fun BottonePrincipale(
     testo: String,
@@ -153,7 +161,7 @@ fun IntestazioneDettaglio(
     }
 }
 
-/** Chip di filtro a pillola: lime pieno quando selezionato, contorno sottile altrimenti. */
+/** Chip di filtro a pillola: pieno quando selezionato, contorno sottile altrimenti. */
 @Composable
 fun ChipForge(selezionato: Boolean, onClick: () -> Unit, testo: String, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
@@ -178,7 +186,7 @@ fun ChipForge(selezionato: Boolean, onClick: () -> Unit, testo: String, modifier
     )
 }
 
-/** Colori dei campi di testo: riempiti con il colore card, bordo sottile, accento lime/oliva a fuoco. */
+/** Colori dei campi di testo: riempiti con il colore card, bordo sottile, accento a fuoco. */
 @Composable
 fun coloriCampo(): TextFieldColors {
     val cs = MaterialTheme.colorScheme
@@ -200,7 +208,7 @@ val FormaCampo = RoundedCornerShape(16.dp)
 @Composable
 fun TesseraStat(etichetta: String, valore: String, modifier: Modifier = Modifier, coloreValore: Color = MaterialTheme.colorScheme.onSurface) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.magnesite(RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
@@ -212,8 +220,8 @@ fun TesseraStat(etichetta: String, valore: String, modifier: Modifier = Modifier
 }
 
 /**
- * Colori "miti" della fase di recupero: fondo scuro caldo (o pesca tenue in tema chiaro)
- * con il corallo solo come accento, invece dello schermo tutto corallo.
+ * Colori della fase di recupero: stesso fondo neutro del resto dell'app, il vermiglio vive solo
+ * nelle pennellate, nelle scritte d'accento e nel bottone principale.
  */
 data class ColoriRiposo(
     val sfondo: Color,        // sfondo a tutto schermo (timer)
@@ -229,20 +237,20 @@ data class ColoriRiposo(
 fun coloriRiposo(): ColoriRiposo {
     val scuro = MaterialTheme.colorScheme.background.luminance() < 0.5f
     return if (scuro) ColoriRiposo(
-        sfondo = Color(0xFF1E1714),
-        pannello = Color(0xFF2A1F1A),
-        testo = Color(0xFFF2EDE9),
-        accento = Color(0xFFFF8A5B),
-        accentoTesto = Color(0xFFFF9F78),
-        traccia = Color(0x2EFF8A5B),
+        sfondo = ScuroSfondo,
+        pannello = ScuroCard,
+        testo = ScuroTesto,
+        accento = Vermiglio,
+        accentoTesto = Color(0xFFFF7A5E),
+        traccia = Vermiglio.copy(alpha = 0.18f),
         suAccento = Color(0xFF0D0E0B),
     ) else ColoriRiposo(
-        sfondo = Color(0xFFFCEDE6),
-        pannello = Color(0xFFFBE4D9),
-        testo = Color(0xFF1F1612),
-        accento = Color(0xFFE5784B),
-        accentoTesto = Color(0xFFA8401A),
-        traccia = Color(0x33E5784B),
+        sfondo = ChiaroSfondo,
+        pannello = ChiaroCard,
+        testo = ChiaroTesto,
+        accento = Vermiglio,
+        accentoTesto = VermiglioTesto,
+        traccia = Vermiglio.copy(alpha = 0.2f),
         suAccento = Color(0xFF0D0E0B),
     )
 }

@@ -163,7 +163,7 @@ fun EsercizioFormScreen(
                 shape = RoundedCornerShape(22.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 border = bordoCard(),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().magnesite(RoundedCornerShape(22.dp))
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val stretching = gruppo == GruppoMuscolare.STRETCHING

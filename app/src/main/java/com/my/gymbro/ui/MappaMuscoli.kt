@@ -396,8 +396,8 @@ fun muscoliCoinvolti(nome: String, gruppo: GruppoMuscolare?): MuscoliCoinvolti? 
 // ---------------- componente (zone in FigureMuscoli.kt, resa in FiguraRealistica.kt) ----------------
 
 /**
- * Mappa fronte/retro su una persona (uomo o donna, a scelta): muscoli principali in lime pieno
- * con alone pulsante, secondari in lime più leggero con bordo. Tocca un muscolo per vederne il nome e il ruolo nell'esercizio.
+ * Mappa fronte/retro su una persona (uomo o donna, a scelta): muscoli principali in vermiglio pieno
+ * con alone pulsante, secondari in vermiglio più leggero con bordo. Tocca un muscolo per vederne il nome e il ruolo nell'esercizio.
  */
 @Composable
 fun MappaMuscoli(coinvolti: MuscoliCoinvolti, modifier: Modifier = Modifier, allungamento: Boolean = false) {
@@ -406,8 +406,9 @@ fun MappaMuscoli(coinvolti: MuscoliCoinvolti, modifier: Modifier = Modifier, all
     // senza applicazione (anteprima dell'IDE) la scelta resta locale
     val figuraLocale = remember { MutableStateFlow(Figura.UOMO) }
     val figura by (impostazioni?.figura ?: figuraLocale).collectAsStateWithLifecycle()
-    val lime = cs.primaryContainer
-    val bordoSecondario = cs.primary.copy(alpha = 0.8f)
+    // Muscoli in vermiglio: il bianco carta del tema non si vedrebbe sulla figura realistica.
+    val lime = cs.tertiaryContainer
+    val bordoSecondario = cs.tertiary.copy(alpha = 0.8f)
     val bagliore = rememberInfiniteTransition(label = "mappa").animateFloat(
         initialValue = 0.1f,
         targetValue = 0.5f,

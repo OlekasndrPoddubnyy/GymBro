@@ -177,7 +177,7 @@ private fun EsercizioCard(
     var menu by remember { mutableStateOf(false) }
     Card(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().magnesite(RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         colors = coloriCard(),
         border = bordoCard(),

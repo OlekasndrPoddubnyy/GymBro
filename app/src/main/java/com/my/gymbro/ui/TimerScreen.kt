@@ -29,9 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -40,8 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.my.gymbro.TimerService
 import com.my.gymbro.ui.theme.Inchiostro
-import kotlin.math.PI
-import kotlin.math.sin
+import com.my.gymbro.ui.theme.StileTitoloSchermata
+import com.my.gymbro.ui.theme.StileTitoloSezione
 
 @Composable
 fun TimerScreen() {
@@ -119,7 +117,7 @@ private fun BloccoPicker(etichetta: String, colore: Color, nota: String? = null,
         shape = RoundedCornerShape(22.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = bordoCard(),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().magnesite(RoundedCornerShape(22.dp))
     ) {
         Row(
             Modifier.padding(start = 20.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
@@ -136,7 +134,7 @@ private fun BloccoPicker(etichetta: String, colore: Color, nota: String? = null,
     }
 }
 
-/** Barra che mostra in proporzione i blocchi di lavoro (lime) e recupero (corallo). */
+/** Barra che mostra in proporzione i blocchi di lavoro (carta) e recupero (vermiglio). */
 @Composable
 private fun SequenzaBlocchi(serie: Int, lavoro: Int, recupero: Int) {
     val cs = MaterialTheme.colorScheme
@@ -185,20 +183,12 @@ private fun TimerAttivo(stato: StatoTimer) {
         label = "riempimento"
     )
 
-    // In recupero tutto lo schermo diventa corallo, con testo inchiostro.
     val riposo = coloriRiposo()
-    val sfondo by animateColorAsState(if (recupero) riposo.sfondo else cs.background, tween(700), label = "sfondo")
     val testo by animateColorAsState(if (recupero) riposo.testo else cs.onSurface, tween(700), label = "testo")
 
     CompositionLocalProvider(LocalContentColor provides testo) {
-        Box(Modifier.fillMaxSize().background(sfondo)) {
-            // Riempimento dello sfondo dal basso, in sincronia col timer (pieno = fase finita)
-            val libero = stato.fase == FaseTimer.SERIE && stato.lavoroLibero
-            RiempimentoSfondo(
-                livello = if (libero || stato.fase == FaseTimer.ATTESA) 0f else progressoAnim,
-                colore = if (recupero) riposo.accento else cs.primaryContainer,
-                modifier = Modifier.fillMaxSize()
-            )
+        Box(Modifier.fillMaxSize()) {   // trasparente: sotto c'è il fondo con la magnesite
+            // Niente riempimento dello sfondo: l'avanzamento lo racconta già l'anello a pennello.
             if (flex) {
                 Column(Modifier.fillMaxSize()) {
                     Column(
@@ -253,61 +243,66 @@ private fun InfoTimer(stato: StatoTimer, progresso: Float, recupero: Boolean, co
         label = "scala"
     )
     val scala = if (ultimi3) pulse else 1f
-    val diametro = if (compatto) 200.dp else 290.dp
+    val diametro = if (compatto) 230.dp else 320.dp
+    val etichetta = StileTitoloSezione.copy(fontSize = if (compatto) 16.sp else 20.sp, lineHeight = if (compatto) 26.sp else 32.sp)
 
     if (stato.fase == FaseTimer.ATTESA) {
         Sopratitolo("Serie ${stato.serieCorrente + 1} di ${stato.serieTotali}", colore = testo.copy(alpha = 0.75f))
-        Text("PRONTO?", style = MaterialTheme.typography.displayMedium, color = cs.primary)
+        Text("pronto?", style = StileTitoloSchermata.copy(fontSize = 40.sp, lineHeight = 60.sp), color = cs.primary)
         Text("Tocca Avanti quando vuoi ripartire", style = MaterialTheme.typography.bodyLarge, color = testo.copy(alpha = 0.8f))
     } else {
         Box(Modifier.size(diametro), contentAlignment = Alignment.Center) {
+            // Anello a pennello: traccia appena accennata, avanzamento a inchiostro pieno
             Canvas(Modifier.fillMaxSize()) {
-                val spessore = 16.dp.toPx()
-                val inset = spessore / 2
-                val area = Size(size.width - spessore, size.height - spessore)
-                drawArc(traccia, 0f, 360f, false, Offset(inset, inset), area, style = Stroke(spessore))
-                drawArc(anello, -90f, 360f * progresso, false, Offset(inset, inset), area, style = Stroke(spessore, cap = StrokeCap.Round))
+                val spessore = (if (compatto) 14.dp else 20.dp).toPx()
+                anelloPennello(traccia, -90f, 352f, spessore, seme = 3)
+                anelloPennello(anello, -92f, 360f * progresso, spessore, seme = 7)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Crossfade(targetState = stato.fase, label = "etichetta") { fase ->
                     Text(
                         when (fase) {
-                            FaseTimer.RECUPERO -> "RIPOSO"
-                            FaseTimer.PREPARAZIONE -> "PRONTI"
-                            else -> "LAVORO"
+                            FaseTimer.RECUPERO -> "riposo"
+                            FaseTimer.PREPARAZIONE -> "pronti"
+                            else -> "lavoro"
                         },
-                        style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 3.sp),
+                        style = etichetta,
                         color = accento
                     )
                 }
+                val tempo = when {
+                    preparazione -> "${stato.secondiRimanenti.coerceAtLeast(1)}"   // 3, 2, 1
+                    libero -> formattaTimer(stato.secondiTrascorsi)              // conta in avanti
+                    else -> formattaTimer(stato.secondiRimanenti)
+                }
+                // Le cifre stanno sempre dentro l'anello: si rimpiccioliscono per "10:00" e oltre.
+                val massima = if (compatto) 84.dp else 118.dp
+                val altezza = minOf(massima, diametro * 0.74f / larghezzaInchiostro(tempo).coerceAtLeast(2.4f))
                 NumeriInchiostro(
-                    when {
-                        preparazione -> "${stato.secondiRimanenti.coerceAtLeast(1)}"   // 3, 2, 1
-                        libero -> formattaTimer(stato.secondiTrascorsi)              // conta in avanti
-                        else -> formattaTimer(stato.secondiRimanenti)
-                    },
-                    altezza = if (compatto) 80.dp else 116.dp,
-                    colore = if (ultimi3 && !recupero && !preparazione) cs.error else testo,
-                    modifier = Modifier.padding(vertical = 4.dp).graphicsLayer { scaleX = scala; scaleY = scala }
+                    tempo,
+                    altezza = altezza,
+                    // Negli ultimi 3 secondi le cifre restano crema e pulsano: il rosso si confondeva col vermiglio del riposo.
+                    colore = testo,
+                    modifier = Modifier.graphicsLayer { scaleX = scala; scaleY = scala }
                 )
                 Text(
-                    "Serie ${stato.serieCorrente + 1} di ${stato.serieTotali}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = testo.copy(alpha = 0.8f)
+                    "serie ${stato.serieCorrente + 1} di ${stato.serieTotali}",
+                    style = etichetta.copy(fontSize = if (compatto) 11.sp else 13.sp, lineHeight = 22.sp),
+                    color = testo.copy(alpha = 0.7f)
                 )
             }
         }
     }
 
-    // Avanzamento serie: un trattino per serie
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Avanzamento serie: una pennellata per serie
+    Row(Modifier.fillMaxWidth().height(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         repeat(stato.serieTotali.coerceAtMost(30)) { i ->
             val colore = when {
                 i < stato.serieCorrente -> accento
-                i == stato.serieCorrente -> accento.copy(alpha = 0.5f)
+                i == stato.serieCorrente -> accento.copy(alpha = 0.55f)
                 else -> traccia
             }
-            Box(Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(50)).background(colore))
+            Canvas(Modifier.weight(1f).fillMaxHeight()) { trattoPennello(colore, seme = i + 1) }
         }
     }
 
@@ -327,10 +322,10 @@ private fun InfoTimer(stato: StatoTimer, progresso: Float, recupero: Boolean, co
             shape = RoundedCornerShape(18.dp),
             color = if (recupero) riposo.accento.copy(alpha = 0.12f) else cs.surfaceContainer,
             contentColor = testo,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().magnesite(RoundedCornerShape(18.dp))
         ) {
             Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Sopratitolo("Poi", Modifier.weight(1f), colore = testo.copy(alpha = 0.7f))
+                Text("poi", style = StileTitoloSezione.copy(fontSize = 15.sp, lineHeight = 24.sp), color = testo.copy(alpha = 0.7f), modifier = Modifier.weight(1f))
                 Text(dopo, style = MaterialTheme.typography.titleMedium)
             }
         }
@@ -378,58 +373,6 @@ private fun BottoniTimer(stato: StatoTimer, recupero: Boolean) {
             contenuto = suPrincipale,
             modifier = Modifier.weight(1f).height(60.dp)
         )
-    }
-}
-
-// ---------------- Riempimento di sottofondo ----------------
-
-/**
- * Riempie lo schermo dal basso fino a [livello] (0..1). Il bordo superiore è un'onda bassa che
- * scorre lentamente, quasi impercettibile: dà vita senza distrarre.
- */
-@Composable
-private fun RiempimentoSfondo(livello: Float, colore: Color, modifier: Modifier = Modifier) {
-    val infinite = rememberInfiniteTransition(label = "onda")
-    val fase by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(6_000, easing = LinearEasing), RepeatMode.Restart),
-        label = "faseOnda"
-    )
-    val coloreAnim by animateColorAsState(colore, tween(600), label = "coloreRiempimento")
-    Canvas(modifier) {
-        if (livello <= 0f) return@Canvas
-        val w = size.width
-        val h = size.height
-        val ampiezza = 5.dp.toPx() * (1f - livello).coerceIn(0.3f, 1f)   // l'onda si calma verso la fine
-        val y0 = h * (1f - livello.coerceIn(0f, 1f))
-        val passi = 48
-        val yOnda = { x: Float -> y0 + ampiezza * sin(fase + x / w * 2f * PI.toFloat()) }
-        val riempimento = Path().apply {
-            moveTo(0f, h)
-            for (i in 0..passi) {
-                val x = w * i / passi
-                lineTo(x, yOnda(x))
-            }
-            lineTo(w, h)
-            close()
-        }
-        drawPath(
-            riempimento,
-            brush = Brush.verticalGradient(
-                listOf(coloreAnim.copy(alpha = 0.22f), coloreAnim.copy(alpha = 0.08f)),
-                startY = y0,
-                endY = h
-            )
-        )
-        // filo luminoso sul bordo superiore
-        val bordo = Path().apply {
-            for (i in 0..passi) {
-                val x = w * i / passi
-                if (i == 0) moveTo(x, yOnda(x)) else lineTo(x, yOnda(x))
-            }
-        }
-        drawPath(bordo, coloreAnim.copy(alpha = 0.45f), style = Stroke(width = 2.dp.toPx()))
     }
 }
 

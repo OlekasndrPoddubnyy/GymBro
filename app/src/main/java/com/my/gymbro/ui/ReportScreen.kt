@@ -138,7 +138,7 @@ private fun descriviPeriodoPrima(p: PeriodoReport): String = when (p) {
 @Composable
 private fun Riepilogo(stato: ReportState) {
     val cs = MaterialTheme.colorScheme
-    Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer, border = bordoCard()) {
+    Surface(shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer, border = bordoCard(), modifier = Modifier.magnesite(RoundedCornerShape(24.dp))) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column {
                 Sopratitolo("Volume totale · ${descriviPeriodo(stato.periodo)}")
@@ -172,7 +172,7 @@ private fun Riepilogo(stato: ReportState) {
     }
 }
 
-/** "▲ 12% rispetto ai 30 giorni prima" (in lime se si sale), o quanti allenamenti c'erano prima. */
+/** "▲ 12% rispetto ai 30 giorni prima" (in evidenza se si sale), o quanti allenamenti c'erano prima. */
 @Composable
 private fun ConfrontoVolume(attuale: Double, prima: ConfrontoPeriodo, nomePrima: String) {
     val cs = MaterialTheme.colorScheme
@@ -436,7 +436,7 @@ private fun EtichettaNuovo() {
 @Composable
 private fun PrRow(r: RecordEsercizio, modifier: Modifier = Modifier) {
     Card(
-        modifier.fillMaxWidth(),
+        modifier.fillMaxWidth().magnesite(MaterialTheme.shapes.medium),
         colors = coloriCard(),
         border = bordoCard(),
         elevation = elevazioneCard()
@@ -467,7 +467,7 @@ private fun PrRow(r: RecordEsercizio, modifier: Modifier = Modifier) {
 @Composable
 private fun StoricoRow(v: VoceStorico, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier.fillMaxWidth(),
+        modifier.fillMaxWidth().magnesite(MaterialTheme.shapes.medium),
         colors = coloriCard(),
         border = bordoCard(),
         elevation = elevazioneCard()
@@ -546,7 +546,7 @@ private fun DettaglioSessioneSheet(v: VoceStorico, onDismiss: () -> Unit) {
 @Composable
 private fun SezioneCard(titolo: String, content: @Composable ColumnScope.() -> Unit) {
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().magnesite(MaterialTheme.shapes.medium),
         colors = coloriCard(),
         border = bordoCard(),
         elevation = elevazioneCard()

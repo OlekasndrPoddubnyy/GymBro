@@ -3,6 +3,11 @@ package com.my.gymbro.ui
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
@@ -19,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.sp
 import com.my.gymbro.ui.theme.Inchiostro
+import com.my.gymbro.ui.theme.StileTitoloSchermata
+import com.my.gymbro.ui.theme.StileTitoloSezione
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -122,7 +129,7 @@ private fun EsecuzioneAttiva(
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         BarraAvanzamentoScheda(stato)
 
-        // Pannello della fase: corallo pieno durante il recupero, card normale altrimenti.
+        // Pannello della fase: accenti vermigli durante il recupero, card normale altrimenti.
         val recupero = stato.fase == Fase.RECUPERO
         val cs = MaterialTheme.colorScheme
         val riposo = coloriRiposo()
@@ -133,7 +140,7 @@ private fun EsecuzioneAttiva(
             color = fondoPannello,
             contentColor = testoPannello,
             border = if (recupero) null else bordoCard(),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).magnesite(RoundedCornerShape(28.dp))
         ) {
         Column(
             Modifier.fillMaxWidth().padding(20.dp),
@@ -198,7 +205,7 @@ private fun EsecuzioneAttiva(
                 Fase.ATTESA -> {
                     Etichetta("Prossimo esercizio")
                     stato.esercizioCorrente?.let {
-                        Text(it.nome.uppercase(), style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
+                        Text(it.nome, style = StileTitoloSchermata, textAlign = TextAlign.Center)
                         FotoEsercizio(it)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -334,15 +341,12 @@ private fun BarraAvanzamentoScheda(stato: StatoEsecuzione) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Spacer(Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { pa },
-            color = MaterialTheme.colorScheme.primaryContainer,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            strokeCap = StrokeCap.Round,
-            gapSize = 0.dp,
-            drawStopIndicator = {},
-            modifier = Modifier.fillMaxWidth().height(8.dp)
+        Spacer(Modifier.height(2.dp))
+        BarraPennello(
+            progresso = pa,
+            colore = MaterialTheme.colorScheme.primaryContainer,
+            traccia = MaterialTheme.colorScheme.surfaceContainerHighest,
+            seme = 9
         )
     }
 }
@@ -354,14 +358,11 @@ private fun BarraProgressoFase(stato: StatoEsecuzione, recupero: Boolean) {
     if (!mostra || stato.secondiTotali <= 0) return
     val p = (stato.secondiTotali - stato.secondiRimanenti).toFloat() / stato.secondiTotali
     val pa by animateFloatAsState(p.coerceIn(0f, 1f), tween(1000, easing = LinearEasing), label = "progFase")
-    LinearProgressIndicator(
-        progress = { pa },
-        color = if (recupero) coloriRiposo().accento else MaterialTheme.colorScheme.primaryContainer,
-        trackColor = if (recupero) coloriRiposo().traccia else MaterialTheme.colorScheme.surfaceContainerHigh,
-        strokeCap = StrokeCap.Round,
-        gapSize = 0.dp,
-        drawStopIndicator = {},
-        modifier = Modifier.fillMaxWidth().height(10.dp)
+    BarraPennello(
+        progresso = pa,
+        colore = if (recupero) coloriRiposo().accento else MaterialTheme.colorScheme.primaryContainer,
+        traccia = if (recupero) coloriRiposo().traccia else MaterialTheme.colorScheme.surfaceContainerHighest,
+        seme = 4
     )
 }
 
@@ -371,7 +372,7 @@ private fun EsecuzioneSerie(stato: StatoEsecuzione, vm: AllenamentoViewModel) {
     val serie = stato.serieCorrente ?: return
 
     Sopratitolo("Serie ${stato.indiceSerie + 1} di ${es.serie.size}", colore = MaterialTheme.colorScheme.primary)
-    Text(es.nome.uppercase(), style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
+    Text(es.nome, style = StileTitoloSchermata, textAlign = TextAlign.Center)
     FotoEsercizio(es)
 
     when (es.modalita) {
@@ -436,19 +437,20 @@ private fun EsecuzioneSerie(stato: StatoEsecuzione, vm: AllenamentoViewModel) {
 
 @Composable
 private fun Etichetta(testo: String, colore: Color = MaterialTheme.colorScheme.primary) {
-    Text(
-        testo.uppercase(),
-        style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 3.sp),
-        color = colore
-    )
+    Text(testo.lowercase(), style = StileTitoloSezione.copy(fontSize = 20.sp, lineHeight = 32.sp), color = colore)
 }
 
 @Composable
 private fun Cronometro(secondi: Int, avvisaFine: Boolean = true) {
+    // Ultimi 3 secondi: le cifre pulsano (niente rosso, che si confondeva col vermiglio del riposo).
+    val ultimi = secondi in 1..3 && avvisaFine
+    val pulsazione = rememberInfiniteTransition(label = "ultimi")
+    val battito by pulsazione.animateFloat(1f, 1.12f, infiniteRepeatable(tween(450), RepeatMode.Reverse), label = "battito")
     NumeriInchiostro(
         formattaTempo(secondi),
         altezza = 68.dp,
-        colore = if (secondi in 1..3 && avvisaFine) MaterialTheme.colorScheme.error else LocalContentColor.current
+        colore = LocalContentColor.current,
+        modifier = Modifier.graphicsLayer { val s = if (ultimi) battito else 1f; scaleX = s; scaleY = s }
     )
 }
 
@@ -478,10 +480,10 @@ private fun ListaStato(
                             when {
                                 fatto -> Icon(Icons.Filled.Check, contentDescription = "Completato", tint = MaterialTheme.colorScheme.primary)
                                 corrente -> Icon(Icons.Filled.PlayArrow, contentDescription = "In corso", tint = MaterialTheme.colorScheme.primary)
-                                else -> Text(
+                                else -> NumeriInchiostro(
                                     "%02d".format(indice + 1),
-                                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    altezza = 20.dp,
+                                    colore = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -560,7 +562,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
             item {
                 Column(Modifier.padding(top = 24.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Sopratitolo("Allenamento completato")
-                    Text("GRANDE\nLAVORO", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
+                    Text("grande\nlavoro!", style = StileTitoloSchermata.copy(fontSize = 38.sp, lineHeight = 58.sp), color = MaterialTheme.colorScheme.primary)
                     Text(stato.nomeScheda, style = MaterialTheme.typography.titleMedium)
                 }
             }
@@ -587,7 +589,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
             muscoli?.let { m ->
                 item {
                     Card(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().magnesite(RoundedCornerShape(18.dp)),
                         shape = RoundedCornerShape(18.dp),
                         colors = coloriCard(),
                         border = bordoCard(),
@@ -610,7 +612,7 @@ private fun Riepilogo(stato: StatoEsecuzione, onChiudi: () -> Unit) {
             items(perEsercizio.entries.toList()) { (id, serie) ->
                 val conf = confronto[id]
                 Card(
-                    Modifier.fillMaxWidth().animateItem(),
+                    Modifier.fillMaxWidth().animateItem().magnesite(RoundedCornerShape(18.dp)),
                     shape = RoundedCornerShape(18.dp),
                     colors = coloriCard(),
                     border = bordoCard(),

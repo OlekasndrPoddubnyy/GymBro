@@ -11,31 +11,33 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /*
- * Convenzione dei ruoli colore usata in tutta l'app:
- *  - primaryContainer / onPrimaryContainer  → riempimento lime + testo inchiostro (bottoni principali, selezioni)
- *  - primary                                → accento leggibile come testo/icona (lime in scuro, oliva in chiaro)
- *  - tertiaryContainer / onTertiaryContainer → riempimento corallo (fase di recupero)
- *  - tertiary                               → corallo leggibile come testo
+ * Convenzione dei ruoli colore usata in tutta l'app (palette "Carta"):
+ *  - primaryContainer / onPrimaryContainer  → riempimento del lavoro/azioni principali:
+ *                                             carta su inchiostro in scuro, inchiostro su carta in chiaro
+ *  - primary                                → accento leggibile come testo/icona (stessa logica)
+ *  - tertiaryContainer / onTertiaryContainer → riempimento vermiglio (fase di recupero)
+ *  - tertiary                               → vermiglio leggibile come testo
+ *  - error                                  → ambra, per non confondersi col vermiglio del recupero
  */
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Lime,
+    primary = Carta,
     onPrimary = Inchiostro,
-    primaryContainer = Lime,
+    primaryContainer = Carta,
     onPrimaryContainer = Inchiostro,
-    inversePrimary = OlivaTesto,
+    inversePrimary = Inchiostro,
     secondary = Color(0xFFC9CCBE),
     onSecondary = Inchiostro,
-    secondaryContainer = Color(0xFF2F3324),
-    onSecondaryContainer = Lime,
-    tertiary = Corallo,
+    secondaryContainer = ScuroCardMassima,
+    onSecondaryContainer = Carta,
+    tertiary = Vermiglio,
     onTertiary = Inchiostro,
-    tertiaryContainer = Corallo,
+    tertiaryContainer = Vermiglio,
     onTertiaryContainer = Inchiostro,
-    error = Color(0xFFFF6B5E),
+    error = Ambra,
     onError = Inchiostro,
-    errorContainer = Color(0xFF4A1A14),
-    onErrorContainer = Color(0xFFFFDAD4),
+    errorContainer = Color(0xFF3D2E0A),
+    onErrorContainer = Color(0xFFFFE3A3),
     background = ScuroSfondo,
     onBackground = ScuroTesto,
     surface = ScuroSfondo,
@@ -58,23 +60,23 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = OlivaTesto,
-    onPrimary = Color.White,
-    primaryContainer = Lime,
-    onPrimaryContainer = Inchiostro,
-    inversePrimary = Lime,
+    primary = ChiaroTesto,
+    onPrimary = Carta,
+    primaryContainer = ChiaroTesto,
+    onPrimaryContainer = Carta,
+    inversePrimary = Carta,
     secondary = Color(0xFF4C4F44),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE6F6B0),
-    onSecondaryContainer = Color(0xFF1C2400),
-    tertiary = CoralloTesto,
+    secondaryContainer = ChiaroCardMassima,
+    onSecondaryContainer = ChiaroTesto,
+    tertiary = VermiglioTesto,
     onTertiary = Color.White,
-    tertiaryContainer = Corallo,
+    tertiaryContainer = Vermiglio,
     onTertiaryContainer = Inchiostro,
-    error = Color(0xFFB3261E),
+    error = AmbraTesto,
     onError = Color.White,
-    errorContainer = Color(0xFFFFDAD4),
-    onErrorContainer = Color(0xFF410002),
+    errorContainer = Color(0xFFFFE9B8),
+    onErrorContainer = Color(0xFF2E1F00),
     background = ChiaroSfondo,
     onBackground = ChiaroTesto,
     surface = ChiaroSfondo,
@@ -109,7 +111,7 @@ fun GymBroTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    // Niente colori dinamici di sistema: l'app ha una sua identità (lime/corallo).
+    // Niente colori dinamici di sistema: l'app ha una sua identità (carta/vermiglio).
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
         typography = Typography,

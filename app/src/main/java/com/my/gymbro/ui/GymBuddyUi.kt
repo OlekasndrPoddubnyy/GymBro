@@ -43,6 +43,7 @@ internal fun GymBuddyScheda(scheda: SchedaConEsercizi) {
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = bordoCard(),
+        modifier = Modifier.magnesite(RoundedCornerShape(24.dp)),
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

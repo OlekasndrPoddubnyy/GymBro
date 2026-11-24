@@ -463,7 +463,7 @@ internal fun AnteprimaSchedaCondivisa(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "riassunto") {
-                Surface(shape = RoundedCornerShape(20.dp), color = cs.surfaceContainer, border = bordoCard()) {
+                Surface(shape = RoundedCornerShape(20.dp), color = cs.surfaceContainer, border = bordoCard(), modifier = Modifier.magnesite(RoundedCornerShape(20.dp))) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             "${scheda.esercizi.size} esercizi · ${scheda.esercizi.sumOf { it.serie.size }} serie",
@@ -494,7 +494,7 @@ internal fun AnteprimaSchedaCondivisa(
             }
             itemsIndexed(scheda.esercizi) { i, e ->
                 Card(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().magnesite(RoundedCornerShape(18.dp)),
                     shape = RoundedCornerShape(18.dp),
                     colors = coloriCard(),
                     border = bordoCard(),
