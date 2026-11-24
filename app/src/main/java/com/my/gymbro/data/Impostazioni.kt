@@ -51,6 +51,11 @@ class Impostazioni(context: Context) {
         get() = prefs.getInt(CHIAVE_SCHEDE, prefs.getInt(CHIAVE_SEED, 0))
         set(v) = prefs.edit().putInt(CHIAVE_SCHEDE, v).apply()
 
+    /** true quando le copie "(versione precedente)" delle schede predefinite sono già state tolte. */
+    var copieSchedeEliminate: Boolean
+        get() = prefs.getBoolean(CHIAVE_COPIE_ELIMINATE, false)
+        set(v) = prefs.edit().putBoolean(CHIAVE_COPIE_ELIMINATE, v).apply()
+
     /** Nomi degli esercizi predefiniti eliminati dall'utente: gli aggiornamenti del catalogo non li reinseriscono. */
     val predefinitiEliminati: Set<String>
         get() = prefs.getStringSet(CHIAVE_ELIMINATI, null)?.toSet() ?: emptySet()
@@ -75,5 +80,6 @@ class Impostazioni(context: Context) {
         const val CHIAVE_SEED = "seed_version"
         const val CHIAVE_SCHEDE = "schede_version"
         const val CHIAVE_ELIMINATI = "predefiniti_eliminati"
+        const val CHIAVE_COPIE_ELIMINATE = "copie_schede_eliminate"
     }
 }

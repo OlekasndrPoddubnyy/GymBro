@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 /** Versione della libreria esercizi predefiniti. v12: catalogo Technogym (Selection/Element+), multipower, cavi, pesi liberi e corpo libero ampliati. */
 private const val VERSIONE_ESERCIZI = 12
 
-/** Versione delle schede predefinite. v4–v11: schede Total body A/B/C; v12: giovedì e venerdì senza doppioni, polpacci, B più corta. Aumentarla SOLO quando cambiano i template in SchedePredefinite.kt (aggiorna le schede omonime, tenendone una copia). */
+/** Versione delle schede predefinite. v4–v11: schede Total body A/B/C; v12: giovedì e venerdì senza doppioni, polpacci, B più corta. Aumentarla SOLO quando cambiano i template in SchedePredefinite.kt (aggiorna le schede omonime, tenendo i pesi). */
 private const val VERSIONE_SCHEDE = 12
 
 private const val TAG = "GymBro"
@@ -43,9 +43,13 @@ class GymBroApplication : Application() {
     private fun allineaDatiPredefiniti() {
         val aggiornaEsercizi = impostazioni.versioneSeed < VERSIONE_ESERCIZI
         val aggiornaSchede = impostazioni.versioneSchede < VERSIONE_SCHEDE
-        if (!aggiornaEsercizi && !aggiornaSchede) return
+        val togliCopie = !impostazioni.copieSchedeEliminate
+        if (!aggiornaEsercizi && !aggiornaSchede && !togliCopie) return
 
         scopeApp.launch {
+            if (togliCopie && tenta("copie delle schede") { repository.eliminaCopieSchedePredefinite() }) {
+                impostazioni.copieSchedeEliminate = true
+            }
             if (aggiornaEsercizi) {
                 val ok = tenta("esercizi predefiniti") {
                     val slugs = assets.list("esercizi")?.toSet() ?: emptySet()

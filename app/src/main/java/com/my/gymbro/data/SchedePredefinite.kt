@@ -14,7 +14,7 @@ package com.my.gymbro.data
  * bicipiti 3, tricipiti 5, polpacci 5.
  *
  * I pesi sono indicativi: ogni macchina pesa in modo diverso, vanno adattati alla prima seduta.
- * Se cambi qui, aumenta VERSIONE_SCHEDE: le schede già salvate si aggiornano tenendo pesi e copia.
+ * Se cambi qui, aumenta VERSIONE_SCHEDE: le schede già salvate si aggiornano tenendo i pesi.
  */
 
 /** Una serie pianificata del template. [ripetizioni] null = esercizio a tempo ([durataSec]). */
