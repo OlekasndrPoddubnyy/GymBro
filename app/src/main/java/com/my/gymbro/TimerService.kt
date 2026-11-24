@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.IBinder
+import android.util.Log
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.VibratorManager
@@ -91,19 +92,46 @@ class TimerService : Service() {
     // Canale sveglia: i beep si sentono anche con il volume dei media a zero.
 
     private fun feedback(s: Segnale) {
-        if (tono == null) tono = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 80) }.getOrNull()
         val vibratore = runCatching {
             getSystemService(VibratorManager::class.java)?.defaultVibrator
         }.getOrNull()
         when (s) {
             Segnale.TICK -> {
-                tono?.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+                beep(ToneGenerator.TONE_PROP_BEEP, 120)
                 vibratore?.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE))
             }
             Segnale.FINE -> {
-                tono?.startTone(ToneGenerator.TONE_PROP_BEEP2, 250)
+                beep(ToneGenerator.TONE_PROP_BEEP2, 250)
                 vibratore?.vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE))
             }
+        }
+    }
+
+    private var streamTono = -1
+
+    /**
+     * Suona sul canale sveglia; se il volume sveglia è a zero ripiega sui media, così il beep non
+     * sparisce in silenzio. Il ToneGenerator si può invalidare (es. riavvio del server audio):
+     * se il tono non parte lo si ricrea e si riprova una volta.
+     */
+    private fun beep(tipo: Int, durataMs: Int) {
+        val audio = getSystemService(AudioManager::class.java)
+        val stream = if (audio != null && audio.getStreamVolume(AudioManager.STREAM_ALARM) == 0)
+            AudioManager.STREAM_MUSIC else AudioManager.STREAM_ALARM
+        if (stream != streamTono) {
+            tono?.release()
+            tono = null
+        }
+        repeat(2) {
+            if (tono == null) {
+                tono = runCatching { ToneGenerator(stream, 100) }.getOrNull()
+                streamTono = stream
+            }
+            val partito = runCatching { tono?.startTone(tipo, durataMs) == true }.getOrDefault(false)
+            if (partito) return
+            Log.w("GymBro", "Beep non partito (stream $stream): ricreo il ToneGenerator")
+            tono?.release()
+            tono = null
         }
     }
 

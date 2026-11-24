@@ -220,11 +220,11 @@ object AllenamentoEngine {
     }
 
     fun iniziaProssimo() {
-        if (_stato.value.fase == Fase.ATTESA) iniziaPasso()
+        if (_stato.value.fase == Fase.ATTESA) iniziaEsercizio()
     }
 
     fun saltaRecupero() {
-        if (_stato.value.fase == Fase.RECUPERO) iniziaPasso()
+        if (_stato.value.fase == Fase.RECUPERO) avviaSerie()
     }
 
     /** Tocco su "Completa". */
@@ -297,7 +297,7 @@ object AllenamentoEngine {
         val s = _stato.value
         if (target == s.indicePasso) return
         posizionaSu(target)
-        if (s.fase == Fase.RECUPERO) return   // il conto alla rovescia prosegue; alla fine iniziaPasso() usa il nuovo passo
+        if (s.fase == Fase.RECUPERO) return   // il conto alla rovescia prosegue; alla fine avviaSerie() usa il nuovo passo
         conto.ferma()
         _stato.update { it.copy(fase = Fase.ATTESA) }
     }
@@ -308,8 +308,11 @@ object AllenamentoEngine {
 
     // ---------- transizioni interne ----------
 
-    /** Tocca alla serie corrente: se è a tempo prima c'è il conto alla rovescia, altrimenti parte subito. */
-    private fun iniziaPasso() {
+    /**
+     * "Inizia" su un nuovo esercizio: se è a tempo prima c'è il conto alla rovescia per mettersi in
+     * posizione, altrimenti parte subito. Tra le serie dello stesso esercizio il recupero basta.
+     */
+    private fun iniziaEsercizio() {
         if (_stato.value.esercizioCorrente?.modalita != Modalita.TEMPO) return avviaSerie()
         // Il "Salta" della preparazione compare sotto il dito che ha appena toccato "Inizia".
         doppioTocco.segna()
@@ -363,9 +366,9 @@ object AllenamentoEngine {
             cambioBlocco || next.attesaPrima -> _stato.update { it.copy(fase = Fase.ATTESA) }
             rec > 0 -> {
                 _stato.update { it.copy(fase = Fase.RECUPERO) }
-                avviaCountdown(rec) { iniziaPasso() }
+                avviaCountdown(rec) { finePreparazione() }
             }
-            else -> iniziaPasso()
+            else -> avviaSerie()
         }
     }
 
