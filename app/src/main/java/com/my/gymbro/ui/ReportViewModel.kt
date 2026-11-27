@@ -1,5 +1,8 @@
 package com.my.gymbro.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -51,7 +54,38 @@ data class RecordEsercizio(
 )
 data class PuntoAndamento(val dataMs: Long, val valore: Float)
 data class EsercizioRef(val id: Long, val nome: String)
-data class EsercizioStorico(val nome: String, val serie: List<String>)
+/** Una serie dello storico: [testo] da mostrare, i valori per correggerla. */
+data class SerieStorico(
+    val id: Long,
+    val testo: String,
+    val ripetizioni: Int?,
+    val pesoKg: Float?,
+    val durataSec: Int?,
+)
+data class EsercizioStorico(val nome: String, val serie: List<SerieStorico>)
+
+/** Nuovi valori di una serie dello storico. */
+data class CorrezioneSerie(val ripetizioni: Int?, val pesoKg: Float?, val durataSec: Int?)
+
+private const val RIP_MAX = 999
+private const val KG_MAX = 1000f
+private const val SEC_MAX = 6 * 3600
+
+/**
+ * Legge i campi del dialogo di correzione: serie a tempo ([aTempo]) solo la durata, le altre
+ * ripetizioni e peso (facoltativo, con virgola o punto). null = valori non validi.
+ */
+internal fun correzioneDa(aTempo: Boolean, ripetizioni: String, pesoKg: String, durataSec: String): CorrezioneSerie? {
+    if (aTempo) {
+        val sec = durataSec.trim().toIntOrNull()?.takeIf { it in 1..SEC_MAX } ?: return null
+        return CorrezioneSerie(null, null, sec)
+    }
+    val rip = ripetizioni.trim().toIntOrNull()?.takeIf { it in 0..RIP_MAX } ?: return null
+    val testoKg = pesoKg.trim().replace(',', '.')
+    val kg = if (testoKg.isEmpty()) null
+    else testoKg.toFloatOrNull()?.takeIf { it.isFinite() && it >= 0f && it <= KG_MAX } ?: return null
+    return CorrezioneSerie(rip, kg, null)
+}
 data class VoceStorico(
     val id: Long,
     val dataMs: Long,
@@ -99,7 +133,7 @@ data class ReportState(
     val storico: List<VoceStorico> = emptyList(),
 )
 
-class ReportViewModel(repo: GymBroRepository) : ViewModel() {
+class ReportViewModel(private val repo: GymBroRepository) : ViewModel() {
 
     private val esercizioSel = MutableStateFlow<Long?>(null)
     private val periodo = MutableStateFlow(PeriodoReport.TUTTO)
@@ -115,6 +149,42 @@ class ReportViewModel(repo: GymBroRepository) : ViewModel() {
     fun selezionaEsercizio(id: Long) { esercizioSel.value = id }
     fun setPeriodo(p: PeriodoReport) { periodo.value = p }
     fun setMetrica(m: MetricaTrend) { metrica.value = m }
+
+    // ---------- correzioni dello storico ----------
+
+    /** Correzione non riuscita (null = nessun problema). */
+    var avviso by mutableStateOf<Avviso?>(null)
+        private set
+
+    fun chiudiAvviso() { avviso = null }
+
+    /** L'allenamento in corso si corregge quando è finito: intanto il motore sta scrivendo le sue serie. */
+    fun modificabile(sessioneId: Long): Boolean = AllenamentoEngine.sessioneInCorso != sessioneId
+
+    fun correggiSerie(sessioneId: Long, serie: SerieStorico, correzione: CorrezioneSerie) {
+        if (!modificabile(sessioneId)) return
+        viewModelScope.lanciaProtetto("Correzione della serie", nonRiuscito("Serie non corretta")) {
+            repo.correggiSerie(serie.id, correzione.ripetizioni, correzione.pesoKg, correzione.durataSec)
+        }
+    }
+
+    fun eliminaSerie(sessioneId: Long, serie: SerieStorico) {
+        if (!modificabile(sessioneId)) return
+        viewModelScope.lanciaProtetto("Eliminazione della serie", nonRiuscito("Serie non eliminata")) {
+            repo.eliminaSerieEseguita(serie.id)
+        }
+    }
+
+    fun eliminaSessione(sessioneId: Long) {
+        if (!modificabile(sessioneId)) return
+        viewModelScope.lanciaProtetto("Eliminazione dell'allenamento", nonRiuscito("Allenamento non eliminato")) {
+            repo.eliminaSessione(sessioneId)
+        }
+    }
+
+    private fun nonRiuscito(titolo: String) = { e: Exception ->
+        avviso = Avviso(titolo, "Il database ha dato errore: ${motivoErrore(e)}. Lo storico non è cambiato.")
+    }
 
     companion object {
         val Factory = viewModelFactory {
@@ -313,7 +383,9 @@ internal fun calcola(
         val dettaglio = rs.groupBy { it.esercizioId }.map { (_, righeEs) ->
             EsercizioStorico(
                 nome = righeEs.first().nomeEsercizio,
-                serie = righeEs.sortedBy { it.numero }.map(::descriviRiga)
+                serie = righeEs.sortedWith(compareBy({ it.numero }, { it.serieId })).map { r ->
+                    SerieStorico(r.serieId, descriviRiga(r), r.ripetizioni, r.pesoKg, r.durataSec)
+                }
             )
         }
         VoceStorico(

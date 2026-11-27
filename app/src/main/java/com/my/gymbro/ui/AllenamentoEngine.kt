@@ -1,14 +1,10 @@
 package com.my.gymbro.ui
 
-import android.content.Context
-import android.os.SystemClock
 import android.util.Log
 import com.my.gymbro.GymBroApplication
 import com.my.gymbro.TimerService
 import com.my.gymbro.data.ChiaveBuddy
 import com.my.gymbro.data.Esercizio
-import com.my.gymbro.data.GymBroRepository
-import com.my.gymbro.data.MemoriaBuddy
 import com.my.gymbro.data.Modalita
 import com.my.gymbro.data.Obiettivo
 import com.my.gymbro.data.ProgressoBuddy
@@ -30,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.CoroutineContext
 
 private const val SEC_PREPARAZIONE = 10
 
@@ -49,15 +46,31 @@ internal data class Passo(
  *
  * Tutto gira sul main thread: i comandi dell'utente e lo scadere del tempo non si sovrappongono.
  */
-object AllenamentoEngine {
+object AllenamentoEngine : MotoreAllenamento(Dispatchers.Main.immediate) {
+    fun avvia(app: GymBroApplication, idScheda: Long) = avvia(AmbienteApp(app), idScheda)
 
+    fun riprendi(app: GymBroApplication, salvato: AllenamentoSalvato, terminaSubito: Boolean) =
+        riprendi(AmbienteApp(app), salvato, terminaSubito)
+}
+
+/**
+ * La logica dell'allenamento (passi, superset, recuperi, salti, salvataggi), separata da Android:
+ * [contesto] dice dove girano le coroutine (il main thread nell'app, quello virtuale di runTest nei
+ * test), [orologio] da dove si legge il tempo. Database e memorie arrivano con [avvia]/[riprendi].
+ */
+open class MotoreAllenamento(
+    contesto: CoroutineContext,
+    private val orologio: Orologio = OrologioDiSistema,
+) {
+
+    // SupervisorJob figlio del Job del contesto (se c'è): nei test si chiude con il test.
     private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main.immediate + gestoreErrori("allenamento") { e ->
+        contesto + SupervisorJob(contesto[Job]) + gestoreErrori("allenamento") { e ->
             mostra(Avviso("Qualcosa è andato storto", "Errore durante l'allenamento: ${motivoErrore(e)}."))
         }
     )
-    private val conto = ContoAllaRovescia(scope, AllenamentoAttivo::segnala)
-    private val doppioTocco = AntiDoppioTocco { SystemClock.elapsedRealtime() }
+    private val conto = ContoAllaRovescia(scope, ora = orologio::monotono, segnala = AllenamentoAttivo::segnala)
+    private val doppioTocco = AntiDoppioTocco(orologio::monotono)
 
     private val _stato = MutableStateFlow(StatoEsecuzione())
     val stato: StateFlow<StatoEsecuzione> = _stato.asStateFlow()
@@ -70,14 +83,15 @@ object AllenamentoEngine {
     val inEsecuzione: Boolean
         get() = _schedaInCorso.value != null && _stato.value.fase != Fase.COMPLETATO
 
+    /** Sessione dell'allenamento in corso: finché non è finito non la si corregge dallo storico. */
+    val sessioneInCorso: Long?
+        get() = sessioneId.takeIf { inEsecuzione && it != 0L }
+
     /** true se l'allenamento in corso usa l'esercizio [id]: finché è così non si può eliminare. */
     fun usaEsercizio(id: Long): Boolean = inEsecuzione &&
         _stato.value.let { s -> s.esercizi.any { it.esercizioId == id } || s.log.any { it.esercizioId == id } }
 
-    private lateinit var repo: GymBroRepository
-    private lateinit var appContext: Context
-    private lateinit var memoria: MemoriaBuddy
-    private lateinit var ripresa: RipresaAllenamento
+    private lateinit var amb: AmbienteAllenamento
 
     /** Ultimo stato salvato per la ripresa (senza l'ora), per non riscriverlo a ogni secondo. */
     private var ultimoSalvato: AllenamentoSalvato? = null
@@ -135,7 +149,7 @@ object AllenamentoEngine {
      * cambia qualcosa che conta (passo, fase, esercizi, serie fatte), non a ogni secondo del conto.
      */
     private fun salvaPerRipresa(s: StatoEsecuzione) {
-        if (!s.pronta || s.fase == Fase.COMPLETATO || sessioneId == 0L || !::ripresa.isInitialized) return
+        if (!s.pronta || s.fase == Fase.COMPLETATO || sessioneId == 0L || !::amb.isInitialized) return
         val schedaId = _schedaInCorso.value ?: return
         val istantanea = AllenamentoSalvato(
             schedaId = schedaId,
@@ -152,20 +166,17 @@ object AllenamentoEngine {
         )
         if (istantanea == ultimoSalvato) return
         ultimoSalvato = istantanea
-        ripresa.salva(istantanea.copy(aggiornatoIl = System.currentTimeMillis()))
+        amb.salvaRipresa(istantanea.copy(aggiornatoIl = orologio.adesso()))
     }
 
     private fun dimenticaRipresa() {
         ultimoSalvato = null
-        if (::ripresa.isInitialized) ripresa.cancella()
+        if (::amb.isInitialized) amb.cancellaRipresa()
     }
 
     /** Azzera il motore per un nuovo allenamento (o per uno da riprendere). */
-    private fun prepara(app: GymBroApplication, idScheda: Long) {
-        repo = app.repository
-        appContext = app.applicationContext
-        memoria = app.memoriaBuddy
-        ripresa = app.ripresa
+    private fun prepara(ambiente: AmbienteAllenamento, idScheda: Long) {
+        amb = ambiente
         ultimoSalvato = null
         fineConto = null
         pianoBuddy = emptyMap()
@@ -197,20 +208,20 @@ object AllenamentoEngine {
      * Avvia un nuovo allenamento della scheda [idScheda]. Ignorato se ce n'è già uno in corso
      * (non completato); un eventuale riepilogo ancora aperto viene chiuso.
      */
-    fun avvia(app: GymBroApplication, idScheda: Long) {
+    fun avvia(ambiente: AmbienteAllenamento, idScheda: Long) {
         if (inEsecuzione) return
-        prepara(app, idScheda)
+        prepara(ambiente, idScheda)
         // Iniziarne uno nuovo vuol dire lasciar perdere quello interrotto (le sue serie restano nello storico).
         dimenticaRipresa()
-        TimerService.togliAvvisoInterrotto(appContext)
+        amb.togliAvvisoInterrotto()
 
         caricamento = scope.lanciaProtetto("Avvio dell'allenamento", seErrore = { e ->
             // Sessione forse già creata ma vuota: non deve restare nello storico.
             val creata = sessioneId
             abbandona(Avviso("Allenamento non avviato", "Non è stato possibile avviare l'allenamento: ${motivoErrore(e)}."))
-            if (creata != 0L) scope.lanciaProtetto("Pulizia della sessione vuota", {}) { repo.scartaSessioneVuota(creata) }
+            if (creata != 0L) scope.lanciaProtetto("Pulizia della sessione vuota", {}) { amb.scartaSessioneVuota(creata) }
         }) {
-            val completa = repo.caricaSchedaCompleta(idScheda)
+            val completa = amb.caricaSchedaCompleta(idScheda)
             val nome = completa?.scheda?.nome ?: "Allenamento"
             val esercizi = completa?.esercizi
                 ?.sortedBy { it.esercizioScheda.ordine }
@@ -221,11 +232,11 @@ object AllenamentoEngine {
                 .toMap()
                 .mapValues { (id, obiettivo) -> seriePerEsercizio(esercizi, id) to obiettivo }
 
-            dataInizio = System.currentTimeMillis()
-            sessioneId = repo.avviaSessione(
+            dataInizio = orologio.adesso()
+            sessioneId = amb.avviaSessione(
                 Sessione(schedaId = idScheda, nomeScheda = nome, dataInizio = dataInizio)
             )
-            prefill = esercizi.associate { it.esercizioId to repo.prefillEsercizio(it.esercizioId, sessioneId) }
+            prefill = esercizi.associate { it.esercizioId to amb.prefillEsercizio(it.esercizioId, sessioneId) }
             passi = costruisciPassi(esercizi)
 
             if (passi.isEmpty()) {
@@ -250,7 +261,7 @@ object AllenamentoEngine {
             // Pubblica subito lo stato (il servizio controlla che ci sia qualcosa di attivo) e avvia
             // il servizio in primo piano: conteggio, beep e vibrazione proseguono in background.
             AllenamentoAttivo.aggiorna(AllenamentoAttivo.Info(nome, descriviEsecuzione(_stato.value)))
-            TimerService.start(appContext)
+            amb.avviaServizio()
             avviaCountdown(SEC_PREPARAZIONE) { finePreparazione() }
         }
     }
@@ -269,14 +280,14 @@ object AllenamentoEngine {
      * database. Con [terminaSubito] lo chiude come se fosse finito all'ultima attività (riepilogo e
      * Gym Buddy compresi); senza serie fatte la sessione vuota si elimina e basta.
      */
-    fun riprendi(app: GymBroApplication, salvato: AllenamentoSalvato, terminaSubito: Boolean) {
+    fun riprendi(ambiente: AmbienteAllenamento, salvato: AllenamentoSalvato, terminaSubito: Boolean) {
         if (inEsecuzione) return
-        prepara(app, salvato.schedaId)
-        TimerService.togliAvvisoInterrotto(appContext)
+        prepara(ambiente, salvato.schedaId)
+        amb.togliAvvisoInterrotto()
 
         caricamento = scope.launch {
             try {
-                val sessione = repo.sessione(salvato.sessioneId)
+                val sessione = amb.sessione(salvato.sessioneId)
                 // Sessione sparita o diversa (es. dati importati da un backup nel frattempo).
                 if (sessione == null || sessione.dataInizio != salvato.dataInizio) {
                     return@launch abbandona(nonRipreso("L'allenamento interrotto non è più nello storico: non si può riprendere."))
@@ -285,8 +296,8 @@ object AllenamentoEngine {
                 val nuoviPassi = costruisciPassi(esercizi)
                 if (nuoviPassi.isEmpty()) return@launch abbandona(null)
 
-                val libreria = repo.eserciziOra().associateBy { it.id }
-                val log = repo.serieDiSessione(salvato.sessioneId)
+                val libreria = amb.eserciziOra().associateBy { it.id }
+                val log = amb.serieDiSessione(salvato.sessioneId)
                 sessioneId = salvato.sessioneId
                 dataInizio = salvato.dataInizio
                 pianoBuddy = salvato.pianoBuddy
@@ -298,7 +309,7 @@ object AllenamentoEngine {
                     .filter { esercizi[passi[it].idxEsercizio].esercizioId !in libreria && !risolto(it) }
                     .forEach { saltati += it }
                 prefill = esercizi.map { it.esercizioId }.distinct().filter { it in libreria }
-                    .associateWith { repo.prefillEsercizio(it, sessioneId) }
+                    .associateWith { amb.prefillEsercizio(it, sessioneId) }
 
                 val idx = salvato.indicePasso.takeIf { it in passi.indices && !risolto(it) }
                     ?: prossimoPasso(salvato.indicePasso.coerceIn(0, passi.lastIndex))
@@ -324,7 +335,7 @@ object AllenamentoEngine {
                 if (terminaSubito || idx == null) {
                     if (log.isEmpty()) {
                         // Niente di fatto: non è un allenamento, non resta nello storico.
-                        repo.scartaSessioneVuota(sessioneId)
+                        amb.scartaSessioneVuota(sessioneId)
                         return@launch abbandona(null)
                     }
                     posizionaSu(idx ?: passi.lastIndex)
@@ -335,10 +346,10 @@ object AllenamentoEngine {
                 posizionaSu(idx)
                 // Il servizio controlla che ci sia qualcosa di attivo: lo stato va pubblicato prima.
                 AllenamentoAttivo.aggiorna(AllenamentoAttivo.Info(salvato.nomeScheda, descriviEsecuzione(_stato.value)))
-                TimerService.start(appContext)
+                amb.avviaServizio()
                 val modalita = esercizi[passi[idx].idxEsercizio].modalita
                 val come = if (idx != salvato.indicePasso) Ripartenza.Attesa
-                else ripartenza(salvato.fase, modalita, salvato.fineRecupero, System.currentTimeMillis())
+                else ripartenza(salvato.fase, modalita, salvato.fineRecupero, orologio.adesso())
                 when (come) {
                     is Ripartenza.Recupero -> {
                         _stato.update { it.copy(fase = Fase.RECUPERO) }
@@ -389,7 +400,7 @@ object AllenamentoEngine {
         scope.lanciaProtetto("Sostituzione dell'esercizio", seErrore = { e ->
             mostra(Avviso("Esercizio non sostituito", "Non è stato possibile passare a \"${nuovo.nome}\": ${motivoErrore(e)}."))
         }) {
-            val ultime = repo.prefillEsercizio(nuovo.id, sessione)
+            val ultime = amb.prefillEsercizio(nuovo.id, sessione)
             if (!inEsecuzione || sessione != sessioneId) return@lanciaProtetto
             val prima = _stato.value.esercizi.getOrNull(indice) ?: return@lanciaProtetto
             if (prima.esercizioId == nuovo.id) return@lanciaProtetto
@@ -604,7 +615,7 @@ object AllenamentoEngine {
 
     private fun EsercizioEsec.conGymBuddy(schedaId: Long): EsercizioEsec {
         if (modalita != Modalita.RIPETIZIONI) return this
-        val progresso = memoria.progresso(ChiaveBuddy(schedaId, esercizioId))?.takeIf { it.attivo } ?: return this
+        val progresso = amb.progressoBuddy(ChiaveBuddy(schedaId, esercizioId))?.takeIf { it.attivo } ?: return this
         val buddy = progresso.stato ?: return this
         return copy(obiettivo = buddy.obiettivo, calibrazione = buddy.calibrazione)
     }
@@ -622,7 +633,7 @@ object AllenamentoEngine {
             // Sostituito durante l'allenamento: non si può giudicare.
             if (seriePerEsercizio(s.esercizi, id) != previste) continue
             val chiave = ChiaveBuddy(schedaId, id)
-            val salvato = memoria.progresso(chiave) ?: continue
+            val salvato = amb.progressoBuddy(chiave) ?: continue
             // Obiettivo cambiato nel frattempo: le serie erano fatte su quello vecchio.
             if (salvato.stato?.obiettivo != obiettivo) continue
             // Il verso del carico non è salvato: vale quello dell'esercizio fatto.
@@ -637,12 +648,12 @@ object AllenamentoEngine {
             val aggiornato = progresso.dopoAllenamento(previste, fatte)
             if (aggiornato != progresso) nuovi[chiave] = aggiornato
         }
-        memoria.salva(nuovi)
+        amb.salvaBuddy(nuovi)
         pianoBuddy = emptyMap() // una sola valutazione per allenamento
     }
 
     /** [fine]: quando è finito; per un allenamento interrotto è l'ultima attività, non adesso. */
-    private fun terminaAllenamento(fine: Long = System.currentTimeMillis()) {
+    private fun terminaAllenamento(fine: Long = orologio.adesso()) {
         conto.ferma()
         AllenamentoAttivo.aggiorna(null)
         valutaGymBuddy()
@@ -658,7 +669,7 @@ object AllenamentoEngine {
     private suspend fun salvaSerieInSospeso(): Boolean = salvataggio.withLock {
         while (daSalvare.isNotEmpty()) {
             try {
-                repo.registraSerie(daSalvare.first())
+                amb.registraSerie(daSalvare.first())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -681,7 +692,7 @@ object AllenamentoEngine {
         true
     }
 
-    private fun terminaSessioneDb(fine: Long = System.currentTimeMillis()) {
+    private fun terminaSessioneDb(fine: Long = orologio.adesso()) {
         val id = sessioneId
         if (id == 0L) return
         val vuota = _stato.value.log.isEmpty()
@@ -696,7 +707,7 @@ object AllenamentoEngine {
         }) {
             if (vuota) {
                 // Nessuna serie fatta: non è un allenamento, non deve comparire nei Report.
-                repo.scartaSessioneVuota(id)
+                amb.scartaSessioneVuota(id)
                 return@lanciaProtetto
             }
             // Ultimo tentativo per le serie rimaste indietro, prima di chiudere.
@@ -711,13 +722,13 @@ object AllenamentoEngine {
                         "conteranno nei report."
                 )
             }
-            repo.terminaSessione(id, fine)
+            amb.terminaSessione(id, fine)
         }
     }
 
     /** Conto alla rovescia della fase corrente, con i secondi pubblicati nello stato. */
     private fun avviaCountdown(secondi: Int, alFine: () -> Unit) {
-        fineConto = System.currentTimeMillis() + secondi * 1000L
+        fineConto = orologio.adesso() + secondi * 1000L
         _stato.update { it.copy(secondiRimanenti = secondi, secondiTotali = secondi) }
         conto.avvia(
             secondi,

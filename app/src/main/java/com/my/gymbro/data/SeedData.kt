@@ -4,7 +4,8 @@ import com.my.gymbro.data.Attrezzatura.*
 import com.my.gymbro.data.GruppoMuscolare.*
 
 /**
- * Slug usato per la cartella delle immagini in assets/esercizi/<slug>/{0,1}.jpg.
+ * Slug usato per la cartella delle immagini in assets/esercizi/<slug>/{0,1}.webp
+ * (nel DB il percorso resta ".../0.jpg": vedi fileAsset in ImageStorage).
  * Deve restare identico alla logica dello script che ha scaricato le immagini.
  */
 fun slugEsercizio(nome: String): String = nome.lowercase()

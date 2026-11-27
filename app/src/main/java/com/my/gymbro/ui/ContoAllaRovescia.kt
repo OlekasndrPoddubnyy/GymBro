@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
  */
 class ContoAllaRovescia(
     private val scope: CoroutineScope,
+    /** Tempo monotono in ms (nei test, quello virtuale). */
+    private val ora: () -> Long = SystemClock::elapsedRealtime,
     private val segnala: (Segnale) -> Unit,
 ) {
     private var job: Job? = null
@@ -31,12 +33,12 @@ class ContoAllaRovescia(
             onFine()
             return
         }
-        val fine = SystemClock.elapsedRealtime() + secondi * 1000L
+        val fine = ora() + secondi * 1000L
         job = scope.launch {
             var ultimo = secondi
             while (true) {
                 delay(200)
-                val rim = ((fine - SystemClock.elapsedRealtime() + 999) / 1000).toInt().coerceAtLeast(0)
+                val rim = ((fine - ora() + 999) / 1000).toInt().coerceAtLeast(0)
                 if (rim != ultimo) {
                     ultimo = rim
                     onSecondo(rim)
@@ -54,12 +56,12 @@ class ContoAllaRovescia(
     /** Cronometro in avanti (secondi trascorsi da ora); si ferma solo con [ferma] o un nuovo avvio. */
     fun avviaInAvanti(onSecondo: (Int) -> Unit) {
         ferma()
-        val inizio = SystemClock.elapsedRealtime()
+        val inizio = ora()
         job = scope.launch {
             var ultimo = 0
             while (true) {
                 delay(250)
-                val trascorsi = ((SystemClock.elapsedRealtime() - inizio) / 1000).toInt()
+                val trascorsi = ((ora() - inizio) / 1000).toInt()
                 if (trascorsi != ultimo) {
                     ultimo = trascorsi
                     onSecondo(trascorsi)

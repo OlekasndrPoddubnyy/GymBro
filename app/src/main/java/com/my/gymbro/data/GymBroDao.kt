@@ -111,6 +111,23 @@ interface GymBroDao {
     )
     suspend fun deleteSessioneVuota(id: Long)
 
+    // ---------- Correzioni dello storico ----------
+    /** Corregge i valori di una serie registrata (es. 800 kg scritti al posto di 80). */
+    @Query("UPDATE serie_eseguite SET ripetizioni = :ripetizioni, pesoKg = :pesoKg, durataSec = :durataSec WHERE id = :id")
+    suspend fun correggiSerie(id: Long, ripetizioni: Int?, pesoKg: Float?, durataSec: Int?)
+
+    @Query("SELECT sessioneId FROM serie_eseguite WHERE id = :id")
+    suspend fun sessioneDiSerie(id: Long): Long?
+
+    @Query("DELETE FROM serie_eseguite WHERE id = :id")
+    suspend fun deleteSerieEseguita(id: Long)
+
+    @Query("DELETE FROM serie_eseguite WHERE sessioneId = :id")
+    suspend fun deleteSerieDiSessione(id: Long)
+
+    @Query("DELETE FROM sessioni WHERE id = :id")
+    suspend fun deleteSessione(id: Long)
+
     @Query("SELECT * FROM sessioni ORDER BY dataInizio DESC")
     fun getSessioni(): Flow<List<Sessione>>
 
@@ -167,7 +184,7 @@ interface GymBroDao {
         SELECT s.id AS sessioneId, s.dataInizio AS dataInizio,
                se.esercizioId AS esercizioId, e.nome AS nomeEsercizio, e.gruppoMuscolare AS gruppoMuscolare,
                se.numero AS numero, se.ripetizioni AS ripetizioni, se.pesoKg AS pesoKg, se.durataSec AS durataSec,
-               e.chiaveSeed AS chiaveSeed
+               e.chiaveSeed AS chiaveSeed, se.id AS serieId
         FROM serie_eseguite se
         JOIN sessioni s ON s.id = se.sessioneId
         JOIN esercizi e ON e.id = se.esercizioId

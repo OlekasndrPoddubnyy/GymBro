@@ -32,10 +32,13 @@ private val cacheImmagini = object : LruCache<String, ImageBitmap>(CACHE_IMMAGIN
 /**
  * Salvataggio delle immagini degli esercizi nello storage interno dell'app.
  * Nel DB si tiene solo il percorso: file assoluto per le foto utente, oppure
- * "asset://esercizi/<slug>/0.jpg" per le immagini predefinite incluse nell'APK.
+ * "asset://esercizi/<slug>/0.jpg" per le immagini predefinite incluse nell'APK (file .webp, vedi [fileAsset]).
  */
 object ImageStorage {
     private const val DIR = "exercise_images"
+
+    /** Cartella delle foto scelte dall'utente. */
+    fun cartella(context: Context): File = File(context.filesDir, DIR)
 
     /** Lato massimo (px) delle foto salvate: l'app non le mostra mai più grandi di così. */
     private const val LATO_MAX = 1280
@@ -124,7 +127,16 @@ private fun decodeRicampionata(path: String, maxDim: Int): Bitmap? {
     return BitmapFactory.decodeFile(path, opts)
 }
 
-private fun decodeAssetRicampionata(context: Context, assetPath: String, maxDim: Int): Bitmap? {
+/**
+ * File reale di un'immagine predefinita. Nel DB, nei backup e nei QR il percorso resta quello
+ * storico "esercizi/<slug>/0.jpg" (così non servono migrazioni e i vecchi backup valgono ancora),
+ * ma nell'APK le immagini sono WebP: pesano circa la metà.
+ */
+internal fun fileAsset(assetPath: String): String =
+    if (assetPath.endsWith(".jpg")) assetPath.removeSuffix(".jpg") + ".webp" else assetPath
+
+private fun decodeAssetRicampionata(context: Context, percorso: String, maxDim: Int): Bitmap? {
+    val assetPath = fileAsset(percorso)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.assets.open(assetPath).use { BitmapFactory.decodeStream(it, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

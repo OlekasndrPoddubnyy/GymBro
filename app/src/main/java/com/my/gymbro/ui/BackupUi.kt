@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -36,11 +37,17 @@ import com.my.gymbro.data.BackupNonValido
 import com.my.gymbro.data.DatiBackup
 import com.my.gymbro.data.Tema
 import com.my.gymbro.data.codificaBackup
+import com.my.gymbro.data.conImmaginiIn
 import com.my.gymbro.data.decodificaBackup
+import com.my.gymbro.data.eZip
+import com.my.gymbro.data.immaginiDaSalvare
+import com.my.gymbro.data.leggiBackupZip
+import com.my.gymbro.data.scriviBackupZip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -55,7 +62,8 @@ private const val BYTE_MASSIMI_BACKUP = 50L * 1024 * 1024
 sealed interface StatoBackup {
     data object Nessuno : StatoBackup
     data class InCorso(val testo: String) : StatoBackup
-    data class DaConfermare(val dati: DatiBackup) : StatoBackup
+    /** [immagini]: foto dello ZIP già estratte, da copiare al loro posto se si conferma (nome → file). */
+    data class DaConfermare(val dati: DatiBackup, val immagini: Map<String, File> = emptyMap()) : StatoBackup
     data class Esito(val titolo: String, val testo: String) : StatoBackup
 }
 
@@ -64,41 +72,80 @@ class BackupViewModel(private val app: GymBroApplication) : ViewModel() {
     var stato by mutableStateOf<StatoBackup>(StatoBackup.Nessuno)
         private set
 
+    /** Dove si estraggono le foto di uno ZIP in attesa di conferma. */
+    private val cartellaImportazione get() = File(app.cacheDir, "importazione_backup")
+
     fun chiudi() {
-        if (stato !is StatoBackup.InCorso) stato = StatoBackup.Nessuno
+        if (stato is StatoBackup.InCorso) return
+        cartellaImportazione.deleteRecursively() // foto di uno ZIP non confermato o letto a metà
+        stato = StatoBackup.Nessuno
     }
 
+    /** ZIP con il JSON e le foto scelte dall'utente: un telefono nuovo riceve tutto. */
     fun esporta(uri: Uri) = lavora("Esportazione…", "Esportazione non riuscita") {
         val dati = app.repository.leggiPerBackup(app.memoriaBuddy.esporta(), app.impostazioni.predefinitiEliminati)
         val testo = withContext(Dispatchers.Default) { codificaBackup(dati) }
-        withContext(Dispatchers.IO) {
+        val foto = withContext(Dispatchers.IO) {
+            val immagini = immaginiDaSalvare(dati.esercizi)
             val uscita = app.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("File non scrivibile")
-            uscita.bufferedWriter().use { it.write(testo) }
+            uscita.use { scriviBackupZip(it, testo, immagini) }
+            immagini.size
         }
         StatoBackup.Esito(
             "Dati esportati",
-            "${dati.schede.size} schede e ${dati.allenamenti} allenamenti salvati nel file. " +
-                "Le foto che hai aggiunto tu agli esercizi non sono nel file.",
+            "${dati.schede.size} schede, ${dati.allenamenti} allenamenti e " +
+                (if (foto == 1) "1 foto" else "$foto foto") + " degli esercizi salvati nel file.",
         )
     }
 
-    /** Legge e controlla il file; niente cambia finché l'utente non conferma. */
+    /** Legge e controlla il file (ZIP, o JSON delle versioni precedenti); niente cambia finché l'utente non conferma. */
     fun leggi(uri: Uri) = lavora("Lettura del file…", "Importazione non riuscita") {
-        val testo = withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             val ingresso = app.contentResolver.openInputStream(uri) ?: throw IOException("File non leggibile")
-            ingresso.use(::leggiConLimite)
+            BufferedInputStream(ingresso).use { flusso ->
+                flusso.mark(4)
+                val inizio = flusso.readNBytes(4)
+                flusso.reset()
+                if (eZip(inizio)) {
+                    val zip = leggiBackupZip(flusso, cartellaImportazione)
+                    val dati = decodificaBackup(zip.json)
+                        .conImmaginiIn(ImageStorage.cartella(app), zip.immagini.keys)
+                    StatoBackup.DaConfermare(dati, zip.immagini)
+                } else {
+                    StatoBackup.DaConfermare(decodificaBackup(leggiConLimite(flusso)))
+                }
+            }
         }
-        StatoBackup.DaConfermare(withContext(Dispatchers.Default) { decodificaBackup(testo) })
     }
 
     fun conferma() {
-        val dati = (stato as? StatoBackup.DaConfermare)?.dati ?: return
+        val attesa = stato as? StatoBackup.DaConfermare ?: return
+        val dati = attesa.dati
         if (AllenamentoEngine.inEsecuzione) {
             stato = StatoBackup.Esito("Allenamento in corso", "Termina l'allenamento prima di importare i dati.")
             return
         }
         lavora("Importazione…", "Importazione non riuscita") {
-            app.repository.ripristina(dati) { path -> path.startsWith("asset://") || File(path).isFile }
+            val cartella = ImageStorage.cartella(app)
+            val fotoPrima = app.repository.eserciziOra().mapNotNullTo(HashSet()) { it.immaginePath }
+            // Le foto vanno al loro posto prima del database, che tiene solo quelle che trova.
+            val copiate = withContext(Dispatchers.IO) {
+                cartella.mkdirs()
+                attesa.immagini.mapNotNull { (nome, file) ->
+                    File(cartella, nome).takeIf { !it.exists() }?.also { file.copyTo(it) }
+                }
+            }
+            try {
+                app.repository.ripristina(dati) { path -> path.startsWith("asset://") || File(path).isFile }
+            } catch (e: Exception) {
+                withContext(Dispatchers.IO) { copiate.forEach { it.delete() } }
+                throw e
+            } finally {
+                withContext(Dispatchers.IO) { cartellaImportazione.deleteRecursively() }
+            }
+            // Le foto degli esercizi sostituiti, che nessuno usa più.
+            val fotoDopo = dati.esercizi.mapNotNullTo(HashSet()) { it.immaginePath }
+            withContext(Dispatchers.IO) { (fotoPrima - fotoDopo).forEach(ImageStorage::elimina) }
             // Un allenamento interrotto si riferiva ai dati appena sostituiti: non si può più riprendere.
             app.ripresa.cancella()
             app.memoriaBuddy.ripristina(dati.buddy)
@@ -106,9 +153,11 @@ class BackupViewModel(private val app: GymBroApplication) : ViewModel() {
             // Un backup di una versione precedente può non avere gli esercizi aggiunti dopo.
             val slugs = withContext(Dispatchers.IO) { app.assets.list("esercizi")?.toSet().orEmpty() }
             app.repository.assicuraEserciziPredefiniti(slugs, dati.predefinitiEliminati)
+            val foto = attesa.immagini.size
             StatoBackup.Esito(
                 "Dati importati",
-                "${dati.schede.size} schede e ${dati.allenamenti} allenamenti ripristinati.",
+                "${dati.schede.size} schede e ${dati.allenamenti} allenamenti ripristinati" +
+                    (if (foto > 0) ", con ${if (foto == 1) "1 foto" else "$foto foto"} degli esercizi." else "."),
             )
         }
     }
@@ -150,10 +199,10 @@ internal fun MenuApp(corrente: Tema, onTema: (Tema) -> Unit) {
     val vm: BackupViewModel = viewModel(factory = BackupViewModel.Factory)
     var aperto by remember { mutableStateOf(false) }
     var crediti by remember { mutableStateOf(false) }
-    val salva = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    val salva = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         uri?.let(vm::esporta)
     }
-    // Molti file manager non riconoscono il tipo dei .json: si accetta qualsiasi file e lo si controlla.
+    // Molti file manager non riconoscono il tipo dei .json/.zip: si accetta qualsiasi file e lo si controlla.
     val apri = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::leggi)
     }
@@ -175,7 +224,7 @@ internal fun MenuApp(corrente: Tema, onTema: (Tema) -> Unit) {
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Esporta dati") },
-                onClick = { aperto = false; salva.launch("gymbro-backup-${LocalDate.now()}.json") },
+                onClick = { aperto = false; salva.launch("gymbro-backup-${LocalDate.now()}.zip") },
                 leadingIcon = { Icon(Icons.Filled.FileUpload, contentDescription = null) }
             )
             DropdownMenuItem(
@@ -185,7 +234,7 @@ internal fun MenuApp(corrente: Tema, onTema: (Tema) -> Unit) {
             )
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Crediti") },
+                text = { Text("Informazioni") },
                 onClick = { aperto = false; crediti = true },
                 leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) }
             )
@@ -193,12 +242,21 @@ internal fun MenuApp(corrente: Tema, onTema: (Tema) -> Unit) {
     }
 
     if (crediti) {
+        val context = LocalContext.current
+        // Versione e numero di build: dicono quale APK ha installato chi usa l'app.
+        val versione = remember {
+            runCatching {
+                val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                "${info.versionName} (build ${info.longVersionCode})"
+            }.getOrDefault("?")
+        }
         AlertDialog(
             onDismissRequest = { crediti = false },
-            title = { Text("Crediti") },
+            title = { Text("GymBro") },
             text = {
                 Text(
-                    "Cifre del timer: \"Ink number collection\", designed by Freepik (freepik.com).\n\n" +
+                    "Versione $versione\n\n" +
+                        "Cifre del timer: \"Ink number collection\", designed by Freepik (freepik.com).\n\n" +
                         "Font dei titoli: Rock Salt di Font Diner, licenza Apache 2.0."
                 )
             },

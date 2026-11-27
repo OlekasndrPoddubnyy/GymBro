@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.my.gymbro.ui.theme.StileTitoloSchermata
 import com.my.gymbro.GymBroApplication
+import com.my.gymbro.MainActivity
 import com.my.gymbro.data.Tema
 import java.time.Instant
 import java.time.LocalDate
@@ -38,6 +39,9 @@ import java.time.format.DateTimeFormatter
 fun GymBroApp(
     temaCorrente: Tema,
     onTema: (Tema) -> Unit,
+    /** Richiesta arrivata da una notifica ([MainActivity.APRI_ALLENAMENTO], [MainActivity.APRI_TIMER]). */
+    daAprire: String? = null,
+    onAperto: () -> Unit = {},
 ) {
     var sezione by rememberSaveable { mutableStateOf(Sezione.ESERCIZI) }
     // false = allenamento ridotto: continua in sottofondo e si naviga nel resto dell'app
@@ -48,6 +52,19 @@ fun GymBroApp(
     // L'allenamento vive in AllenamentoEngine (di processo): sopravvive anche alla ricreazione dell'Activity.
     val schedaInCorso by AllenamentoEngine.schedaInCorso.collectAsStateWithLifecycle()
     val app = LocalContext.current.applicationContext as GymBroApplication
+
+    // Tocco sulla notifica: si va a quello che mostrava (se nel frattempo è finito, si resta dove si è).
+    LaunchedEffect(daAprire) {
+        when (daAprire) {
+            MainActivity.APRI_ALLENAMENTO -> if (AllenamentoEngine.schedaInCorso.value != null) allenamentoAperto = true
+            MainActivity.APRI_TIMER -> {
+                allenamentoAperto = false
+                sezione = Sezione.TIMER
+            }
+            null -> return@LaunchedEffect
+        }
+        onAperto()
+    }
 
     // Problemi del motore dell'allenamento (salvataggi, avvio, ripresa): visibili sia durante
     // l'allenamento a schermo intero sia nel resto dell'app, per questo stanno prima del ramo.

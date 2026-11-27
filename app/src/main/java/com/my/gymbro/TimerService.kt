@@ -164,9 +164,19 @@ class TimerService : Service() {
     // ---------- notifica ----------
 
     private fun costruisciNotifica(): Notification {
+        val s = TimerEngine.stato.value
+        val allenamento = AllenamentoAttivo.info.value
+        // Il tocco porta a quello che la notifica mostra, non alla sezione aperta per ultima.
+        val destinazione = when {
+            s.fase != FaseTimer.CONFIG -> MainActivity.APRI_TIMER
+            allenamento != null -> MainActivity.APRI_ALLENAMENTO
+            else -> null
+        }
         val apri = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_APRI, destinazione),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val builder = NotificationCompat.Builder(this, CANALE_ID)
@@ -177,8 +187,6 @@ class TimerService : Service() {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
 
-        val s = TimerEngine.stato.value
-        val allenamento = AllenamentoAttivo.info.value
         if (s.fase != FaseTimer.CONFIG) {
             builder.setContentTitle("GymBro Timer").setContentText(descriviTimer(s))
             aggiungiAzioniTimer(builder, s)

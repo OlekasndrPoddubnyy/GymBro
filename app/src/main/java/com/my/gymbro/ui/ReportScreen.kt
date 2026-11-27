@@ -14,6 +14,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,7 +43,8 @@ import kotlin.math.roundToInt
 fun ReportScreen() {
     val vm: ReportViewModel = viewModel(factory = ReportViewModel.Factory)
     val stato by vm.stato.collectAsStateWithLifecycle()
-    var sessioneAperta by remember { mutableStateOf<VoceStorico?>(null) }
+    // Per id, non la voce: dopo una correzione il dettaglio mostra i valori nuovi.
+    var sessioneAperta by rememberSaveable { mutableStateOf<Long?>(null) }
     var storicoCompleto by rememberSaveable { mutableStateOf(false) }
 
     when {
@@ -85,7 +90,7 @@ fun ReportScreen() {
             }
             val storicoVisibile = if (storicoCompleto) stato.storico else stato.storico.take(STORICO_INIZIALE)
             items(storicoVisibile, key = { "sessione_${it.id}" }) { v ->
-                StoricoRow(v, onClick = { sessioneAperta = v }, modifier = Modifier.animateItem())
+                StoricoRow(v, onClick = { sessioneAperta = v.id }, modifier = Modifier.animateItem())
             }
             if (stato.storico.size > STORICO_INIZIALE) {
                 item(key = "storico_altro") {
@@ -100,8 +105,31 @@ fun ReportScreen() {
         }
     }
 
-    sessioneAperta?.let { v ->
-        DettaglioSessioneSheet(v, onDismiss = { sessioneAperta = null })
+    // Sparita dallo storico (eliminata, o ultima serie tolta): il dettaglio si chiude.
+    val voceAperta = sessioneAperta?.let { id -> stato.storico.firstOrNull { it.id == id } }
+    if (voceAperta != null) {
+        DettaglioSessioneSheet(
+            v = voceAperta,
+            modificabile = vm.modificabile(voceAperta.id),
+            onCorreggi = { serie, correzione -> vm.correggiSerie(voceAperta.id, serie, correzione) },
+            onEliminaSerie = { serie -> vm.eliminaSerie(voceAperta.id, serie) },
+            onEliminaSessione = {
+                vm.eliminaSessione(voceAperta.id)
+                sessioneAperta = null
+            },
+            onDismiss = { sessioneAperta = null },
+        )
+    } else if (sessioneAperta != null && stato.pronto) {
+        LaunchedEffect(Unit) { sessioneAperta = null }
+    }
+
+    vm.avviso?.let { a ->
+        AlertDialog(
+            onDismissRequest = vm::chiudiAvviso,
+            title = { Text(a.titolo) },
+            text = { Text(a.testo) },
+            confirmButton = { TextButton(onClick = vm::chiudiAvviso) { Text("OK") } },
+        )
     }
 }
 
@@ -505,7 +533,17 @@ private fun StoricoRow(v: VoceStorico, onClick: () -> Unit, modifier: Modifier =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DettaglioSessioneSheet(v: VoceStorico, onDismiss: () -> Unit) {
+private fun DettaglioSessioneSheet(
+    v: VoceStorico,
+    modificabile: Boolean,
+    onCorreggi: (SerieStorico, CorrezioneSerie) -> Unit,
+    onEliminaSerie: (SerieStorico) -> Unit,
+    onEliminaSessione: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var daCorreggere by remember { mutableStateOf<Pair<String, SerieStorico>?>(null) }
+    var confermaElimina by remember { mutableStateOf(false) }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -532,16 +570,167 @@ private fun DettaglioSessioneSheet(v: VoceStorico, onDismiss: () -> Unit) {
             if (v.dettaglio.isEmpty()) {
                 Text("Nessuna serie registrata.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (modificabile) {
+                Text(
+                    "Tocca una serie per correggerla o eliminarla.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "Allenamento in corso: potrai correggerlo quando sarà finito.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             v.dettaglio.forEach { es ->
                 Text(es.nome, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
                 es.serie.forEach { s ->
-                    Text("• $s", style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(enabled = modificabile) { daCorreggere = es.nome to s }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("• ${s.testo}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        if (modificabile) {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = "Correggi",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            if (modificabile) {
+                TextButton(
+                    onClick = { confermaElimina = true },
+                    modifier = Modifier.padding(top = 12.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Elimina allenamento")
                 }
             }
             Spacer(Modifier.height(32.dp))
         }
     }
+
+    daCorreggere?.let { (nome, serie) ->
+        DialogoCorreggiSerie(
+            nomeEsercizio = nome,
+            serie = serie,
+            onSalva = { correzione ->
+                onCorreggi(serie, correzione)
+                daCorreggere = null
+            },
+            onElimina = {
+                onEliminaSerie(serie)
+                daCorreggere = null
+            },
+            onAnnulla = { daCorreggere = null },
+        )
+    }
+
+    if (confermaElimina) {
+        AlertDialog(
+            onDismissRequest = { confermaElimina = false },
+            title = { Text("Eliminare l'allenamento?") },
+            text = {
+                Text(
+                    "\"${v.nome}\" del ${dataStorico(v.dataMs)} sparirà dallo storico con le sue ${v.numSerie} serie. " +
+                        "Record, massimali e grafici verranno ricalcolati senza. Non si può annullare."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confermaElimina = false; onEliminaSessione() }) { Text("Elimina") }
+            },
+            dismissButton = { TextButton(onClick = { confermaElimina = false }) { Text("Annulla") } },
+        )
+    }
 }
+
+/** Correzione di una serie registrata: ripetizioni e peso, o la durata per le serie a tempo. */
+@Composable
+private fun DialogoCorreggiSerie(
+    nomeEsercizio: String,
+    serie: SerieStorico,
+    onSalva: (CorrezioneSerie) -> Unit,
+    onElimina: () -> Unit,
+    onAnnulla: () -> Unit,
+) {
+    val aTempo = serie.durataSec != null
+    var rip by rememberSaveable { mutableStateOf(serie.ripetizioni?.toString().orEmpty()) }
+    var kg by rememberSaveable { mutableStateOf(serie.pesoKg?.toBigDecimal()?.stripTrailingZeros()?.toPlainString().orEmpty()) }
+    var sec by rememberSaveable { mutableStateOf(serie.durataSec?.toString().orEmpty()) }
+    var confermaElimina by remember { mutableStateOf(false) }
+    val correzione = correzioneDa(aTempo, rip, kg, sec)
+
+    if (confermaElimina) {
+        AlertDialog(
+            onDismissRequest = { confermaElimina = false },
+            title = { Text("Eliminare la serie?") },
+            text = { Text("\"${serie.testo}\" di $nomeEsercizio sparirà dallo storico. Non si può annullare.") },
+            confirmButton = { TextButton(onClick = onElimina) { Text("Elimina") } },
+            dismissButton = { TextButton(onClick = { confermaElimina = false }) { Text("Annulla") } },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onAnnulla,
+        title = { Text("Correggi serie") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(nomeEsercizio, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (aTempo) {
+                    OutlinedTextField(
+                        value = sec,
+                        onValueChange = { t -> sec = t.filter(Char::isDigit).take(5) },
+                        label = { Text("Durata (secondi)") },
+                        singleLine = true,
+                        isError = correzione == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = rip,
+                        onValueChange = { t -> rip = t.filter(Char::isDigit).take(3) },
+                        label = { Text("Ripetizioni") },
+                        singleLine = true,
+                        isError = rip.toIntOrNull() == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    OutlinedTextField(
+                        value = kg,
+                        onValueChange = { t -> kg = t.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(7) },
+                        label = { Text("Peso (kg)") },
+                        placeholder = { Text("Corpo libero: lascia vuoto") },
+                        singleLine = true,
+                        isError = rip.toIntOrNull() != null && correzione == null,
+                        supportingText = { Text("Massimo ${KG_MASSIMI_CORREZIONE} kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                }
+                TextButton(
+                    onClick = { confermaElimina = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Elimina serie") }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { correzione?.let(onSalva) }, enabled = correzione != null) { Text("Salva") }
+        },
+        dismissButton = { TextButton(onClick = onAnnulla) { Text("Annulla") } },
+    )
+}
+
+private const val KG_MASSIMI_CORREZIONE = 1000
 
 @Composable
 private fun SezioneCard(titolo: String, content: @Composable ColumnScope.() -> Unit) {

@@ -16,6 +16,8 @@ data class RigaReport(
     val durataSec: Int?,
     /** [Esercizio.chiaveSeed] dell'esercizio. */
     val chiaveSeed: String? = null,
+    /** Id della [SerieEseguita], per correggerla o eliminarla dallo storico. */
+    val serieId: Long = 0,
 ) {
     /** Il nome per le tabelle del catalogo (muscoli, macchine assistite), anche se rinominato. */
     val nomeCatalogo: String get() = chiaveSeed ?: nomeEsercizio

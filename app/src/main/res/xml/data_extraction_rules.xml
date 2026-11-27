@@ -1,19 +1,30 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup automatico di Android (Android 12+): cosa si porta su un telefono nuovo.
+    Non sostituisce ⋮ › Esporta dati: è Android a decidere quando farlo, e solo se l'utente ha
+    attivato il backup di Google o fa il trasferimento da telefono a telefono.
+
+    Si salvano: il database (esercizi, schede, storico; tutta la cartella, così anche i file
+    -wal/-shm di Room restano coerenti), le impostazioni (gymbro_prefs) e i progressi di
+    Gym Buddy (gymbro_buddy).
+    Non si salva gymbro_ripresa: un allenamento lasciato a metà su un altro telefono, magari
+    giorni prima, non va riproposto. La cache è esclusa da Android comunque.
 -->
 <data-extraction-rules>
+    <!-- Backup su Google Drive: massimo 25 MB per app, oltre i quali Android non salva NIENTE.
+         Le foto degli esercizi potrebbero superarli, quindi restano fuori: dopo un ripristino
+         gli esercizi con una foto propria la mostrano vuota (le immagini predefinite sono nell'app). -->
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="gymbro_prefs.xml" />
+        <include domain="sharedpref" path="gymbro_buddy.xml" />
     </cloud-backup>
-    <!--
+
+    <!-- Trasferimento diretto da un telefono all'altro: nessun limite, quindi anche le foto. -->
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="gymbro_prefs.xml" />
+        <include domain="sharedpref" path="gymbro_buddy.xml" />
+        <include domain="file" path="exercise_images/" />
     </device-transfer>
-    -->
 </data-extraction-rules>

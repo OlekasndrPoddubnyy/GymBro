@@ -5,6 +5,7 @@ import com.my.gymbro.data.eserciziPredefiniti
 import com.my.gymbro.data.macchinaTechnogym
 import com.my.gymbro.data.schedePredefinite
 import com.my.gymbro.data.slugEsercizio
+import com.my.gymbro.ui.fileAsset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -33,8 +34,20 @@ class SeedDataTest {
         val cartella = listOf("src/main/assets/esercizi", "app/src/main/assets/esercizi")
             .map(::File).firstOrNull { it.isDirectory } ?: return
         val mancanti = seed.mapNotNull { it.immaginePath }
-            .filterNot { File(cartella, "$it/0.jpg").isFile }
+            .filterNot { File(cartella, fileAsset("$it/0.jpg")).isFile }
         assertTrue("Cartelle immagini inesistenti: $mancanti", mancanti.isEmpty())
+    }
+
+    @Test
+    fun immaginiPredefinite_dueFasiWebp() {
+        val cartella = listOf("src/main/assets/esercizi", "app/src/main/assets/esercizi")
+            .map(::File).firstOrNull { it.isDirectory } ?: return
+        val incomplete = cartella.listFiles()!!.filter { it.isDirectory }
+            .filterNot { File(it, "0.webp").isFile && File(it, "1.webp").isFile }
+            .map { it.name }
+        assertTrue("Cartelle senza 0.webp/1.webp: $incomplete", incomplete.isEmpty())
+        assertEquals("esercizi/x/1.webp", fileAsset("esercizi/x/1.jpg"))
+        assertEquals("esercizi/x/1.webp", fileAsset("esercizi/x/1.webp"))
     }
 
     @Test

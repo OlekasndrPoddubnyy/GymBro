@@ -23,8 +23,11 @@ android {
         applicationId = "com.my.gymbro"
         minSdk = 35
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // Da aumentare a OGNI APK dato a qualcuno (versionCode +1, versionName a piacere):
+        // si legge in app da ⋮ › Informazioni, così si sa quale versione ha chi la usa.
+        // Android rifiuta anche di installare sopra un versionCode più alto.
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,6 +67,19 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Nei test JVM le classi Android sono stub: Log & co. restituiscono valori vuoti invece di
+    // lanciare eccezioni (serve per provare il motore dell'allenamento, che scrive nel log).
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
+    // Il test di migrazione legge gli schemi esportati da Room (app/schemas) come asset.
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories.add("$projectDir/schemas")
+        }
+    }
 }
 
 // Storico degli schemi Room (app/schemas/<versione>.json), da tenere in git: serve per le
@@ -99,10 +115,21 @@ dependencies {
     testImplementation(libs.junit)
     // org.json è già in Android, ma nei test JVM ci sono solo stub vuoti: serve per provare il backup.
     testImplementation(libs.org.json)
+    // runTest e tempo virtuale: conti alla rovescia di minuti provati in millisecondi.
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+
+    constraints {
+        // Room porta kotlinx-serialization 1.7.3, ma room-testing (test di migrazione) è compilato
+        // con la 1.8.x e i test strumentati devono usare le stesse versioni dell'app.
+        implementation(libs.kotlinx.serialization.core) {
+            because("room-testing 2.8 richiede kotlinx-serialization ≥ 1.8")
+        }
+    }
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

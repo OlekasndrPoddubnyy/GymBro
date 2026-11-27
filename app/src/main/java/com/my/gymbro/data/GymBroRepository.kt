@@ -285,6 +285,23 @@ class GymBroRepository(private val db: GymBroDatabase) {
     /** Elimina una sessione senza serie (allenamento chiuso prima di farne anche solo una). */
     suspend fun scartaSessioneVuota(id: Long) = dao.deleteSessioneVuota(id)
 
+    // Correzioni dello storico
+    suspend fun correggiSerie(id: Long, ripetizioni: Int?, pesoKg: Float?, durataSec: Int?) =
+        dao.correggiSerie(id, ripetizioni, pesoKg, durataSec)
+
+    /** Elimina una serie registrata; se era l'ultima, anche la sessione (non è più un allenamento). */
+    suspend fun eliminaSerieEseguita(id: Long) = db.withTransaction {
+        val sessione = dao.sessioneDiSerie(id) ?: return@withTransaction
+        dao.deleteSerieEseguita(id)
+        dao.deleteSessioneVuota(sessione)
+    }
+
+    /** Elimina un allenamento dallo storico, con tutte le sue serie. */
+    suspend fun eliminaSessione(id: Long) = db.withTransaction {
+        dao.deleteSerieDiSessione(id)
+        dao.deleteSessione(id)
+    }
+
     // Ripresa di un allenamento interrotto
     suspend fun sessione(id: Long): Sessione? = dao.sessione(id)
     suspend fun serieDiSessione(id: Long): List<SerieEseguita> = dao.serieDiSessione(id)
