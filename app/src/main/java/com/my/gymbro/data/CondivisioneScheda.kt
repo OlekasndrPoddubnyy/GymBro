@@ -39,6 +39,11 @@ data class EsercizioCondiviso(
     val note: String?,
     val superset: Int?,
     val serie: List<SerieCondivisa>,
+    /**
+     * Nome di catalogo, solo se diverso da [nome] (esercizio predefinito rinominato): chi riceve lo
+     * ritrova anche se da lui si chiama in un altro modo. Le versioni precedenti lo ignorano.
+     */
+    val chiave: String? = null,
 )
 
 data class SerieCondivisa(
@@ -79,6 +84,7 @@ fun SchedaConEsercizi.perCondividere(): SchedaCondivisa = SchedaCondivisa(
             serie = ec.serie.sortedBy { it.numero }.map { s ->
                 SerieCondivisa(s.ripetizioni, s.pesoKg, s.durataSec, s.recuperoSec)
             },
+            chiave = ec.esercizio.chiaveSeed?.takeIf { it != ec.esercizio.nome },
         )
     },
 )
@@ -99,6 +105,7 @@ fun codificaSchedaCondivisa(s: SchedaCondivisa): String {
                 .put("m", e.modalita.name)
                 .metti("o", e.note)
                 .metti("s", e.superset)
+                .metti("k", e.chiave)
                 .put("r", JSONArray(e.serie.map { r ->
                     // [ripetizioni, kg, secondi, recupero]: le posizioni al posto dei nomi tengono piccolo il QR.
                     JSONArray()
@@ -138,6 +145,7 @@ fun decodificaSchedaCondivisa(testo: String): SchedaCondivisa {
                     modalita = enumDa(e.optString("m"), Modalita.RIPETIZIONI),
                     note = e.testoONull("o")?.take(MAX_NOTE),
                     superset = if (e.isNull("s")) null else e.getInt("s"),
+                    chiave = e.testoONull("k")?.take(MAX_NOME),
                     serie = (0 until serie.length()).map { j ->
                         val r = serie.getJSONArray(j)
                         SerieCondivisa(
@@ -214,10 +222,16 @@ fun nomeLibero(nome: String, esistenti: Set<String>): String {
     }
 }
 
-/** Gli esercizi della scheda che [libreria] non ha (confronto senza maiuscole/minuscole). */
-fun eserciziNuovi(s: SchedaCondivisa, libreria: Collection<String>): Set<String> {
-    val presenti = libreria.mapTo(HashSet()) { it.lowercase() }
-    return s.esercizi.map { it.nome }.filterTo(LinkedHashSet()) { it.lowercase() !in presenti }
+/**
+ * Gli esercizi della scheda che [libreria] non ha: né per chiave di catalogo, né per nome (senza
+ * maiuscole/minuscole). Sono quelli che l'importazione aggiungerà.
+ */
+fun eserciziNuovi(s: SchedaCondivisa, libreria: Collection<Esercizio>): Set<String> {
+    val chiavi = libreria.mapNotNullTo(HashSet()) { it.chiaveSeed }
+    val nomi = libreria.mapTo(HashSet()) { normalizzaNome(it.nome) }
+    return s.esercizi
+        .filter { (it.chiave ?: it.nome) !in chiavi && normalizzaNome(it.nome) !in nomi }
+        .mapTo(LinkedHashSet()) { it.nome }
 }
 
 // ---------- Compressione e Base45 ----------

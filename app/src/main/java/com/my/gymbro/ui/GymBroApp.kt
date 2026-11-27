@@ -29,6 +29,10 @@ import androidx.compose.ui.unit.sp
 import com.my.gymbro.ui.theme.StileTitoloSchermata
 import com.my.gymbro.GymBroApplication
 import com.my.gymbro.data.Tema
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun GymBroApp(
@@ -44,6 +48,18 @@ fun GymBroApp(
     // L'allenamento vive in AllenamentoEngine (di processo): sopravvive anche alla ricreazione dell'Activity.
     val schedaInCorso by AllenamentoEngine.schedaInCorso.collectAsStateWithLifecycle()
     val app = LocalContext.current.applicationContext as GymBroApplication
+
+    // Problemi del motore dell'allenamento (salvataggi, avvio, ripresa): visibili sia durante
+    // l'allenamento a schermo intero sia nel resto dell'app, per questo stanno prima del ramo.
+    val avviso by AllenamentoEngine.avviso.collectAsStateWithLifecycle()
+    avviso?.let { a ->
+        AlertDialog(
+            onDismissRequest = AllenamentoEngine::chiudiAvviso,
+            title = { Text(a.titolo) },
+            text = { Text(a.testo) },
+            confirmButton = { TextButton(onClick = AllenamentoEngine::chiudiAvviso) { Text("OK") } },
+        )
+    }
 
     if (schedaInCorso != null && allenamentoAperto) {
         AllenamentoScreen(
@@ -139,6 +155,24 @@ fun GymBroApp(
         }
     }
 
+    // Allenamento interrotto da Android (app chiusa per memoria o batteria): si chiede cosa farne.
+    val interrotto = remember(schedaInCorso) { if (schedaInCorso == null) app.ripresa.leggi() else null }
+    var ripresaRimandata by remember { mutableStateOf(false) }
+    if (interrotto != null && !ripresaRimandata) {
+        DialogoRipresa(
+            salvato = interrotto,
+            onRiprendi = {
+                chiediNotifiche()
+                AllenamentoEngine.riprendi(app, interrotto, terminaSubito = false)
+                allenamentoAperto = true
+            },
+            onTermina = {
+                AllenamentoEngine.riprendi(app, interrotto, terminaSubito = true)
+                allenamentoAperto = true
+            },
+            onRimanda = { ripresaRimandata = true },
+        )
+    }
     if (avvisoInCorso) {
         val nome = allenamentoInCorso?.nomeScheda
         AlertDialog(
@@ -158,6 +192,38 @@ fun GymBroApp(
             }
         )
     }
+}
+
+@Composable
+private fun DialogoRipresa(
+    salvato: AllenamentoSalvato,
+    onRiprendi: () -> Unit,
+    onTermina: () -> Unit,
+    onRimanda: () -> Unit,
+) {
+    val fatte = salvato.completati.size
+    val quando = salvato.aggiornatoIl.takeIf { it > 0 }?.let { ms ->
+        val momento = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
+        val ora = DateTimeFormatter.ofPattern("HH:mm").format(momento)
+        if (momento.toLocalDate() == LocalDate.now()) " alle $ora"
+        else " il ${DateTimeFormatter.ofPattern("d/M").format(momento)} alle $ora"
+    }.orEmpty()
+    AlertDialog(
+        onDismissRequest = onRimanda,
+        title = { Text("Allenamento interrotto") },
+        text = {
+            Text(
+                "\"${salvato.nomeScheda}\" si è fermato$quando: Android ha chiuso l'app mentre era in corso. " +
+                    (if (fatte == 0) "Non avevi ancora registrato nessuna serie."
+                    else if (fatte == 1) "Avevi registrato 1 serie, che resta salvata."
+                    else "Avevi registrato $fatte serie, che restano salvate.") +
+                    "\n\nRiprendi da dove eri rimasto, oppure terminalo qui" +
+                    (if (fatte == 0) " (non verrà salvato)." else " e guarda il riepilogo.")
+            )
+        },
+        confirmButton = { TextButton(onClick = onRiprendi) { Text("Riprendi") } },
+        dismissButton = { TextButton(onClick = onTermina) { Text("Termina") } },
+    )
 }
 
 /** Intestazione grande: sopratitolo maiuscolo + titolo condensato, menu (tema e dati) a destra. */

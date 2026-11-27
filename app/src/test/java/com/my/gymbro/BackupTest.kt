@@ -22,7 +22,8 @@ class BackupTest {
     private val dati = DatiBackup(
         creatoIl = 1_764_000_000_000,
         esercizi = listOf(
-            Esercizio(1, "Panca piana", GruppoMuscolare.PETTO, Attrezzatura.BILANCIERE, "Spingi.\n\"Lento\"", "asset://esercizi/panca/0.jpg", true),
+            // Predefinito rinominato dall'utente: la chiave resta quella del catalogo.
+            Esercizio(1, "Panca bilanciere", GruppoMuscolare.PETTO, Attrezzatura.BILANCIERE, "Spingi.\n\"Lento\"", "asset://esercizi/panca/0.jpg", true, "Panca piana"),
             Esercizio(2, "Il mio esercizio", GruppoMuscolare.CORE, Attrezzatura.CORPO_LIBERO),
         ),
         schede = listOf(Scheda(5, "A · Total body — Martedì", "Note con è e 100%", 123L)),
@@ -49,6 +50,22 @@ class BackupTest {
     @Test
     fun andataERitorno_tuttoUguale() {
         assertEquals(dati, decodificaBackup(codificaBackup(dati)))
+    }
+
+    @Test
+    fun backupPrimaDelleChiavi_chiaviDaiNomiDelCatalogo() {
+        val vecchio = dati.copy(
+            esercizi = listOf(
+                Esercizio(1, "Panca piana", GruppoMuscolare.PETTO, Attrezzatura.BILANCIERE, predefinito = true),
+                // Rinominato prima delle chiavi: non si può sapere quale fosse, resta senza.
+                Esercizio(2, "La mia panca", GruppoMuscolare.PETTO, Attrezzatura.BILANCIERE, predefinito = true),
+                Esercizio(3, "Panca piana", GruppoMuscolare.PETTO, Attrezzatura.BILANCIERE, predefinito = true),
+                Esercizio(4, "Il mio esercizio", GruppoMuscolare.CORE, Attrezzatura.CORPO_LIBERO),
+            )
+        )
+        val chiavi = decodificaBackup(codificaBackup(vecchio)).esercizi.map { it.chiaveSeed }
+        // Il doppione (id 3) non può avere la stessa chiave: il database la vuole unica.
+        assertEquals(listOf("Panca piana", null, null, null), chiavi)
     }
 
     @Test

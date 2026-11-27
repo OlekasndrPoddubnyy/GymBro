@@ -23,6 +23,7 @@ import com.my.gymbro.ui.Segnale
 import com.my.gymbro.ui.StatoTimer
 import com.my.gymbro.ui.TimerEngine
 import com.my.gymbro.ui.descriviTimer
+import com.my.gymbro.ui.gestoreErrori
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +41,7 @@ import kotlinx.coroutines.launch
  */
 class TimerService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + gestoreErrori("servizio"))
     private var osservaJob: Job? = null
     private var segnaliJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -61,6 +62,9 @@ class TimerService : Service() {
         startForeground(NOTIF_ID, costruisciNotifica(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
 
         if (!qualcosaAttivo()) {
+            // intent null = Android ha riavviato il servizio dopo aver chiuso l'app (START_STICKY):
+            // l'allenamento in memoria è perso, ma si può riprendere riaprendo l'app.
+            if (intent == null) avvisaSeInterrotto()
             spegni()
             return START_NOT_STICKY
         }
@@ -186,6 +190,24 @@ class TimerService : Service() {
         return builder.build()
     }
 
+    private fun avvisaSeInterrotto() {
+        val salvato = (application as GymBroApplication).ripresa.leggi() ?: return
+        val apri = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notifica = NotificationCompat.Builder(this, CANALE_ID)
+            .setSmallIcon(R.drawable.ic_timer)
+            .setContentTitle("Allenamento interrotto · ${salvato.nomeScheda}")
+            .setContentText("Android ha chiuso l'app. Tocca per riprendere da dove eri rimasto.")
+            .setContentIntent(apri)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        runCatching { notifManager().notify(NOTIF_INTERROTTO, notifica) }
+    }
+
     private fun aggiungiAzioniTimer(builder: NotificationCompat.Builder, s: StatoTimer) {
         when {
             s.fase == FaseTimer.ATTESA -> builder.addAction(0, "Avanti", azione(ACTION_AVANTI))
@@ -227,6 +249,7 @@ class TimerService : Service() {
     companion object {
         private const val CANALE_ID = "timer"
         private const val NOTIF_ID = 1001
+        private const val NOTIF_INTERROTTO = 1002
         const val ACTION_START = "com.my.gymbro.action.TIMER_START"
         const val ACTION_SKIP = "com.my.gymbro.action.TIMER_SKIP"
         const val ACTION_AVANTI = "com.my.gymbro.action.TIMER_AVANTI"
@@ -236,6 +259,11 @@ class TimerService : Service() {
         fun start(context: Context) {
             val i = Intent(context, TimerService::class.java).setAction(ACTION_START)
             ContextCompat.startForegroundService(context, i)
+        }
+
+        /** Toglie l'avviso "allenamento interrotto": è stato ripreso, chiuso o sostituito. */
+        fun togliAvvisoInterrotto(context: Context) {
+            context.getSystemService(NotificationManager::class.java)?.cancel(NOTIF_INTERROTTO)
         }
     }
 }

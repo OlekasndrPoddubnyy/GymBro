@@ -2,6 +2,7 @@ package com.my.gymbro
 
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.my.gymbro.data.Attrezzatura
+import com.my.gymbro.data.Esercizio
 import com.my.gymbro.data.EsercizioCondiviso
 import com.my.gymbro.data.GruppoMuscolare
 import com.my.gymbro.data.Modalita
@@ -191,6 +192,41 @@ class CondivisioneSchedaTest {
 
     @Test
     fun eserciziNuovi_confrontoSenzaMaiuscole() {
-        assertEquals(setOf("Il mio esercizio"), eserciziNuovi(scheda, listOf("panca piana", "Curl con manubri")))
+        val libreria = listOf(es("panca piana"), es("Curl con manubri"))
+        assertEquals(setOf("Il mio esercizio"), eserciziNuovi(scheda, libreria))
     }
+
+    @Test
+    fun eserciziNuovi_predefinitoRinominatoDaChiRiceve_siRitrovaPerChiave() {
+        // Chi riceve ha rinominato "Panca piana": non va aggiunta di nuovo.
+        val libreria = listOf(es("Panca", chiave = "Panca piana"), es("Curl con manubri"))
+        assertEquals(setOf("Il mio esercizio"), eserciziNuovi(scheda, libreria))
+    }
+
+    @Test
+    fun eserciziNuovi_rinominatoDaChiInvia_siRitrovaPerChiave() {
+        val rinominata = scheda.copy(esercizi = scheda.esercizi.map {
+            if (it.nome == "Panca piana") it.copy(nome = "Panca bilanciere", chiave = "Panca piana") else it
+        })
+        val libreria = listOf(es("Panca piana", chiave = "Panca piana"), es("Curl con manubri"), es("Il mio esercizio"))
+        assertEquals(emptySet<String>(), eserciziNuovi(rinominata, libreria))
+    }
+
+    @Test
+    fun chiave_viaggiaNelQr_eManca_SeNonServe() {
+        val rinominata = scheda.copy(esercizi = scheda.esercizi.mapIndexed { i, e ->
+            if (i == 0) e.copy(nome = "Panca bilanciere", chiave = "Panca piana") else e
+        })
+        assertEquals(rinominata, decodificaSchedaCondivisa(codificaSchedaCondivisa(rinominata)))
+        // Senza esercizi rinominati il QR resta quello di prima: nessuna chiave in più.
+        assertTrue(decodificaSchedaCondivisa(codificaSchedaCondivisa(scheda)).esercizi.all { it.chiave == null })
+    }
+
+    private fun es(nome: String, chiave: String? = null) = Esercizio(
+        nome = nome,
+        gruppoMuscolare = GruppoMuscolare.PETTO,
+        attrezzatura = Attrezzatura.BILANCIERE,
+        predefinito = chiave != null,
+        chiaveSeed = chiave,
+    )
 }

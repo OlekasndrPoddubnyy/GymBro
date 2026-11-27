@@ -49,8 +49,18 @@ fun EserciziScreen() {
 
         is EditState.Form -> EsercizioFormScreen(
             iniziale = stato.esercizio,
+            libreria = esercizi,
             onSalva = { vm.salva(it) },
             onAnnulla = { vm.chiudiForm() }
+        )
+    }
+
+    vm.erroreSalvataggio?.let { errore ->
+        AlertDialog(
+            onDismissRequest = vm::chiudiErroreSalvataggio,
+            title = { Text("Esercizio non salvato") },
+            text = { Text(errore) },
+            confirmButton = { TextButton(onClick = vm::chiudiErroreSalvataggio) { Text("OK") } }
         )
     }
 }

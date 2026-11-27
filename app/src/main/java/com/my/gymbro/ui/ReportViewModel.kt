@@ -138,7 +138,7 @@ private fun inizioSettimana(d: LocalDate): LocalDate =
 
 /** Sulle macchine assistite il peso è aiuto: non è volume sollevato. */
 private fun volumeRiga(r: RigaReport): Double =
-    if (caricoInverso(r.nomeEsercizio)) 0.0
+    if (caricoInverso(r.nomeCatalogo)) 0.0
     else (r.pesoKg?.toDouble() ?: 0.0) * (r.ripetizioni?.toDouble() ?: 0.0)
 
 private fun descriviRiga(r: RigaReport): String = when {
@@ -241,7 +241,7 @@ internal fun calcola(
     val pr = righeF.groupBy { it.esercizioId }
         .map { (id, rs) ->
             // Macchine assistite: più peso = più aiuto, quindi niente massimale né peso record.
-            val inverso = caricoInverso(rs.first().nomeEsercizio)
+            val inverso = caricoInverso(rs.first().nomeCatalogo)
             val stime = if (inverso) emptyList() else rs.mapNotNull { r ->
                 val p = r.pesoKg ?: return@mapNotNull null
                 val rip = r.ripetizioni ?: return@mapNotNull null
@@ -274,7 +274,7 @@ internal fun calcola(
     // vicini al più allenato (≥ 60%), più leggeri gli altri.
     val punteggi = HashMap<Muscolo, Double>()
     righeF.groupBy { it.esercizioId }.values.forEach { rs ->
-        val mc = muscoliCoinvolti(rs.first().nomeEsercizio, rs.first().gruppoMuscolare) ?: return@forEach
+        val mc = muscoliCoinvolti(rs.first().nomeCatalogo, rs.first().gruppoMuscolare) ?: return@forEach
         if (rs.first().gruppoMuscolare == GruppoMuscolare.STRETCHING) return@forEach
         mc.principali.forEach { punteggi.merge(it, rs.size.toDouble(), Double::plus) }
         mc.secondari.forEach { punteggi.merge(it, rs.size * 0.5, Double::plus) }

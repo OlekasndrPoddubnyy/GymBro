@@ -6,6 +6,7 @@ import com.my.gymbro.data.GymBroDatabase
 import com.my.gymbro.data.GymBroRepository
 import com.my.gymbro.data.Impostazioni
 import com.my.gymbro.data.MemoriaBuddy
+import com.my.gymbro.ui.RipresaAllenamento
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,8 @@ class GymBroApplication : Application() {
     }
     val impostazioni: Impostazioni by lazy { Impostazioni(this) }
     val memoriaBuddy: MemoriaBuddy by lazy { MemoriaBuddy(this) }
+    /** Allenamento da riprendere se Android chiude l'app mentre è in corso. */
+    val ripresa: RipresaAllenamento by lazy { RipresaAllenamento(this) }
 
     /** Scope di processo per il lavoro di avvio (non legato a nessuna schermata). */
     private val scopeApp = CoroutineScope(SupervisorJob() + Dispatchers.IO)

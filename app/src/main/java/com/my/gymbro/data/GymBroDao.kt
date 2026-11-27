@@ -114,6 +114,13 @@ interface GymBroDao {
     @Query("SELECT * FROM sessioni ORDER BY dataInizio DESC")
     fun getSessioni(): Flow<List<Sessione>>
 
+    @Query("SELECT * FROM sessioni WHERE id = :id")
+    suspend fun sessione(id: Long): Sessione?
+
+    /** Le serie già registrate della sessione [id], nell'ordine in cui sono state fatte. */
+    @Query("SELECT * FROM serie_eseguite WHERE sessioneId = :id ORDER BY id")
+    suspend fun serieDiSessione(id: Long): List<SerieEseguita>
+
     /**
      * Serie realmente eseguite per [esercizioId] nell'ultima sessione che lo conteneva
      * (esclusa [sessioneCorrente]), ordinate per numero e poi per esecuzione. Alimenta la
@@ -159,7 +166,8 @@ interface GymBroDao {
         """
         SELECT s.id AS sessioneId, s.dataInizio AS dataInizio,
                se.esercizioId AS esercizioId, e.nome AS nomeEsercizio, e.gruppoMuscolare AS gruppoMuscolare,
-               se.numero AS numero, se.ripetizioni AS ripetizioni, se.pesoKg AS pesoKg, se.durataSec AS durataSec
+               se.numero AS numero, se.ripetizioni AS ripetizioni, se.pesoKg AS pesoKg, se.durataSec AS durataSec,
+               e.chiaveSeed AS chiaveSeed
         FROM serie_eseguite se
         JOIN sessioni s ON s.id = se.sessioneId
         JOIN esercizi e ON e.id = se.esercizioId

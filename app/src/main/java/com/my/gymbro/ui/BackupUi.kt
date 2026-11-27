@@ -99,6 +99,8 @@ class BackupViewModel(private val app: GymBroApplication) : ViewModel() {
         }
         lavora("Importazione…", "Importazione non riuscita") {
             app.repository.ripristina(dati) { path -> path.startsWith("asset://") || File(path).isFile }
+            // Un allenamento interrotto si riferiva ai dati appena sostituiti: non si può più riprendere.
+            app.ripresa.cancella()
             app.memoriaBuddy.ripristina(dati.buddy)
             app.impostazioni.ripristinaPredefinitiEliminati(dati.predefinitiEliminati)
             // Un backup di una versione precedente può non avere gli esercizi aggiunti dopo.

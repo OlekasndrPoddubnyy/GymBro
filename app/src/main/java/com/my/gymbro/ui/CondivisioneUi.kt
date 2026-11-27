@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.RGBLuminanceSource
+import com.my.gymbro.data.Esercizio
 import com.my.gymbro.data.QrPronto
 import com.my.gymbro.data.SchedaCondivisa
 import com.my.gymbro.data.eserciziNuovi
@@ -443,14 +444,14 @@ private fun leggiQrDaFoto(context: Context, uri: Uri): String? {
 @Composable
 internal fun AnteprimaSchedaCondivisa(
     scheda: SchedaCondivisa,
-    nomiLibreria: List<String>,
+    libreria: List<Esercizio>,
     nomiSchede: Set<String>,
     salvando: Boolean,
     onSalva: () -> Unit,
     onIndietro: () -> Unit,
 ) {
     BackHandler(onBack = onIndietro)
-    val nuovi = remember(scheda, nomiLibreria) { eserciziNuovi(scheda, nomiLibreria) }
+    val nuovi = remember(scheda, libreria) { eserciziNuovi(scheda, libreria) }
     val nomeFinale = remember(scheda, nomiSchede) { nomeLibero(scheda.nome, nomiSchede) }
     val cs = MaterialTheme.colorScheme
 

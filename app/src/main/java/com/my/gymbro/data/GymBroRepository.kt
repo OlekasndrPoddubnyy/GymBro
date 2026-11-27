@@ -14,45 +14,19 @@ class GymBroRepository(private val db: GymBroDatabase) {
     fun schedaConEsercizi(id: Long): Flow<SchedaConEsercizi?> = dao.getSchedaConEsercizi(id)
 
     /**
-     * Allinea gli esercizi predefiniti: inserisce quelli mancanti (per nome) e riempie descrizioni
-     * e immagini (da assets, [assetSlugs]) mancanti di quelli già presenti. Idempotente e non
-     * distruttivo: non duplica, non sovrascrive dati esistenti né esercizi creati dall'utente.
-     * Una descrizione predefinita viene aggiornata solo se quella salvata è ancora contenuta nella
-     * nuova (es. aggiunta della riga "Technogym: …"): le descrizioni modificate dall'utente restano.
+     * Allinea gli esercizi predefiniti al catalogo ([allineaCatalogo]): inserisce quelli mancanti e
+     * completa quelli presenti, riconoscendoli dalla chiave e non dal nome, così un esercizio
+     * rinominato dall'utente non si duplica. Non tocca gli esercizi creati dall'utente e non
+     * reinserisce i predefiniti eliminati ([eliminati], per chiave).
      * Tutto in un'unica transazione: se qualcosa va storto non resta un catalogo a metà.
-     * Gli esercizi predefiniti che l'utente ha eliminato ([eliminati], per nome) non vengono reinseriti.
      */
     suspend fun assicuraEserciziPredefiniti(
         assetSlugs: Set<String> = emptySet(),
         eliminati: Set<String> = emptySet(),
     ) = db.withTransaction {
-        val perNome = dao.tuttiEsercizi().associateBy { it.nome }
-        val daInserire = mutableListOf<Esercizio>()
-        for (seed in eserciziPredefiniti()) {
-            if (seed.nome in eliminati && seed.nome !in perNome) continue
-            // Le cartelle proprie hanno la precedenza; altrimenti si riusa l'immagine indicata dal seed.
-            val slug = slugEsercizio(seed.nome).takeIf { it in assetSlugs } ?: seed.immaginePath
-            val pathAsset = if (slug != null && slug in assetSlugs) "asset://esercizi/$slug/0.jpg" else null
-            val attuale = perNome[seed.nome]
-            if (attuale == null) {
-                daInserire += seed.copy(immaginePath = pathAsset)
-            } else if (attuale.predefinito) {
-                val nuova = seed.descrizione
-                val descr = when {
-                    attuale.descrizione.isNullOrBlank() -> nuova
-                    nuova != null && nuova != attuale.descrizione && nuova.contains(attuale.descrizione) -> nuova
-                    // Testo di una versione precedente del seed, mai modificato dall'utente: si aggiorna.
-                    nuova != null && descrizioneSenzaMacchina(attuale.descrizione) in
-                        descrizioniSuperate[seed.nome].orEmpty() -> nuova
-                    else -> attuale.descrizione
-                }
-                val img = if (attuale.immaginePath.isNullOrBlank()) pathAsset else attuale.immaginePath
-                if (descr != attuale.descrizione || img != attuale.immaginePath) {
-                    dao.updateEsercizio(attuale.copy(descrizione = descr, immaginePath = img))
-                }
-            }
-        }
-        if (daInserire.isNotEmpty()) dao.insertEsercizi(daInserire)
+        val piano = allineaCatalogo(dao.tuttiEsercizi(), eserciziPredefiniti(), assetSlugs, eliminati)
+        piano.daAggiornare.forEach { dao.updateEsercizio(it) }
+        if (piano.daInserire.isNotEmpty()) dao.insertEsercizi(piano.daInserire)
     }
 
     /**
@@ -66,7 +40,8 @@ class GymBroRepository(private val db: GymBroDatabase) {
      */
     suspend fun assicuraSchedePredefinite(personalizzate: Set<Long> = emptySet()) = db.withTransaction {
         val schedePerNome = dao.tutteSchede().associateBy { it.nome }
-        val perNome = dao.tuttiEsercizi().associateBy { it.nome }
+        // I template usano i nomi del catalogo: un esercizio rinominato si ritrova lo stesso.
+        val perNome = dao.tuttiEsercizi().perNomeCatalogo()
         val adesso = System.currentTimeMillis()
         // La lista schede è ordinata per data di creazione decrescente: la A deve apparire per prima.
         schedePredefinite().forEachIndexed { indice, template ->
@@ -183,30 +158,38 @@ class GymBroRepository(private val db: GymBroDatabase) {
         dao.getSchedaConEsercizi(id).first()
 
     /**
-     * Salva tra le proprie una scheda arrivata da un QR. Gli esercizi si cercano per nome (prima
-     * esatto, poi senza maiuscole/minuscole); quelli che mancano si aggiungono alla libreria, con la
-     * descrizione del catalogo se è un esercizio predefinito che era stato eliminato.
+     * Salva tra le proprie una scheda arrivata da un QR. Gli esercizi si cercano per chiave di
+     * catalogo (così si ritrovano anche se uno dei due telefoni li ha rinominati), poi per nome
+     * (prima esatto, poi senza maiuscole/minuscole). Quelli che mancano si aggiungono alla libreria:
+     * un esercizio del catalogo che era stato eliminato torna predefinito, con la sua descrizione.
      * Se esiste già una scheda con lo stesso nome, la nuova diventa "Nome (condivisa)".
      * Tutto in un'unica transazione. @return l'id della scheda salvata.
      */
     suspend fun importaSchedaCondivisa(s: SchedaCondivisa): Long = db.withTransaction {
         val libreria = dao.tuttiEsercizi()
+        val perChiave = libreria.filter { it.chiaveSeed != null }.associateBy { it.chiaveSeed!! }
         val esatti = libreria.associateBy { it.nome }
-        val senzaMaiuscole = libreria.groupBy { it.nome.lowercase() }.mapValues { it.value.first() }
+        val senzaMaiuscole = libreria.groupBy { normalizzaNome(it.nome) }.mapValues { it.value.first() }
         val catalogo by lazy { eserciziPredefiniti().associateBy { it.nome } }
         val idPerNome = HashMap<String, Long>()
 
         val righe = s.esercizi.map { e ->
-            val id = idPerNome.getOrPut(e.nome.lowercase()) {
-                (esatti[e.nome] ?: senzaMaiuscole[e.nome.lowercase()])?.id
-                    ?: dao.insertEsercizio(
-                        Esercizio(
-                            nome = e.nome,
-                            gruppoMuscolare = e.gruppo,
-                            attrezzatura = e.attrezzatura,
-                            descrizione = catalogo[e.nome]?.descrizione,
+            val chiave = e.chiave ?: e.nome
+            val id = idPerNome.getOrPut(normalizzaNome(chiave)) {
+                (perChiave[chiave] ?: esatti[e.nome] ?: senzaMaiuscole[normalizzaNome(e.nome)])?.id
+                    ?: run {
+                        val delCatalogo = catalogo[chiave]
+                        dao.insertEsercizio(
+                            Esercizio(
+                                nome = e.nome,
+                                gruppoMuscolare = e.gruppo,
+                                attrezzatura = e.attrezzatura,
+                                descrizione = delCatalogo?.descrizione,
+                                predefinito = delCatalogo != null,
+                                chiaveSeed = delCatalogo?.nome,
+                            )
                         )
-                    )
+                    }
             }
             EsercizioScheda(
                 schedaId = 0,
@@ -301,6 +284,11 @@ class GymBroRepository(private val db: GymBroDatabase) {
 
     /** Elimina una sessione senza serie (allenamento chiuso prima di farne anche solo una). */
     suspend fun scartaSessioneVuota(id: Long) = dao.deleteSessioneVuota(id)
+
+    // Ripresa di un allenamento interrotto
+    suspend fun sessione(id: Long): Sessione? = dao.sessione(id)
+    suspend fun serieDiSessione(id: Long): List<SerieEseguita> = dao.serieDiSessione(id)
+    suspend fun eserciziOra(): List<Esercizio> = dao.tuttiEsercizi()
 
     suspend fun prefillEsercizio(esercizioId: Long, sessioneCorrente: Long): List<SerieEseguita> =
         dao.ultimeSerieEseguite(esercizioId, sessioneCorrente)

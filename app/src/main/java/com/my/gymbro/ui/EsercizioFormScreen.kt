@@ -29,11 +29,14 @@ import androidx.compose.ui.unit.dp
 import com.my.gymbro.data.Attrezzatura
 import com.my.gymbro.data.Esercizio
 import com.my.gymbro.data.GruppoMuscolare
+import com.my.gymbro.data.nomeGiaUsato
 import kotlinx.coroutines.launch
 
 @Composable
 fun EsercizioFormScreen(
     iniziale: Esercizio?,
+    /** La libreria, per non ammettere due esercizi con lo stesso nome. */
+    libreria: List<Esercizio>,
     onSalva: (Esercizio) -> Unit,
     onAnnulla: () -> Unit,
 ) {
@@ -87,8 +90,8 @@ fun EsercizioFormScreen(
     }
 
     val salva: () -> Unit = {
-        // Se l'immagine persistita è stata sostituita o rimossa, elimina il vecchio file.
-        if (originale != null && originale != immaginePath) ImageStorage.elimina(originale)
+        // L'immagine sostituita o rimossa la elimina chi salva, solo a salvataggio riuscito:
+        // se il database dà errore il form resta aperto e l'esercizio salvato la usa ancora.
         val base = iniziale ?: Esercizio(nome = "", gruppoMuscolare = gruppo, attrezzatura = attrezzo)
         onSalva(
             base.copy(
@@ -102,6 +105,8 @@ fun EsercizioFormScreen(
     }
 
     BackHandler(onBack = annulla)
+
+    val nomeDoppio = remember(nome, libreria) { nomeGiaUsato(nome, libreria, iniziale?.id ?: 0) }
 
     Column(
         Modifier
@@ -135,6 +140,10 @@ fun EsercizioFormScreen(
             onValueChange = { nome = it },
             label = { Text("Nome") },
             singleLine = true,
+            isError = nomeDoppio,
+            supportingText = if (nomeDoppio) {
+                { Text("Esiste già un esercizio con questo nome.") }
+            } else null,
             shape = FormaCampo,
             colors = coloriCampo(),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Next),
@@ -157,8 +166,9 @@ fun EsercizioFormScreen(
             onSelezione = { attrezzo = it }
         )
 
-        // Muscoli coinvolti (aggiornati in base a nome e gruppo)
-        muscoliCoinvolti(nome, gruppo)?.let { mc ->
+        // Muscoli coinvolti (aggiornati in base a nome e gruppo). Un predefinito si riconosce dal
+        // nome di catalogo, così rinominarlo non gli toglie la mappa.
+        muscoliCoinvolti(iniziale?.chiaveSeed ?: nome, gruppo)?.let { mc ->
             Surface(
                 shape = RoundedCornerShape(22.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -191,7 +201,7 @@ fun EsercizioFormScreen(
             BottonePrincipale(
                 testo = "Salva",
                 onClick = salva,
-                enabled = nome.isNotBlank(),
+                enabled = nome.isNotBlank() && !nomeDoppio,
                 icona = Icons.Filled.Check,
                 modifier = Modifier.weight(1f)
             )

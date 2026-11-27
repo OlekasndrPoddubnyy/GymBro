@@ -45,7 +45,7 @@ const val SEC_PREPARAZIONE_TIMER = 3
  */
 object TimerEngine {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + gestoreErrori("timer"))
 
     private val _stato = MutableStateFlow(StatoTimer())
     val stato: StateFlow<StatoTimer> = _stato.asStateFlow()

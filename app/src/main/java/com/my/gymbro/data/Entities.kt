@@ -6,7 +6,10 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 // ---------- Libreria ----------
-@Entity(tableName = "esercizi")
+@Entity(
+    tableName = "esercizi",
+    indices = [Index(value = ["chiaveSeed"], unique = true)]
+)
 data class Esercizio(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val nome: String,
@@ -14,8 +17,17 @@ data class Esercizio(
     val attrezzatura: Attrezzatura,
     val descrizione: String? = null,
     val immaginePath: String? = null,
-    val predefinito: Boolean = false
+    val predefinito: Boolean = false,
+    /**
+     * Per gli esercizi del catalogo: il loro nome nel catalogo, che non cambia se l'utente li
+     * rinomina. È la chiave con cui si ritrovano negli aggiornamenti, nelle schede predefinite,
+     * nella mappa dei muscoli. null per quelli creati dall'utente.
+     */
+    val chiaveSeed: String? = null,
 )
+
+/** Il nome con cui cercare l'esercizio nelle tabelle del catalogo (muscoli, macchine assistite…). */
+val Esercizio.nomeCatalogo: String get() = chiaveSeed ?: nome
 
 // ---------- Schede (template) ----------
 @Entity(tableName = "schede")

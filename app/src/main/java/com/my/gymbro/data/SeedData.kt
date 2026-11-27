@@ -49,7 +49,8 @@ private fun e(
     attrezzatura = attrezzo,
     descrizione = if (tg != null) "$PREFISSO_TECHNOGYM$tg\n$descrizione" else descrizione,
     immaginePath = img,
-    predefinito = true
+    predefinito = true,
+    chiaveSeed = nome,
 )
 
 /**

@@ -13,13 +13,15 @@ import com.my.gymbro.GymBroApplication
 import com.my.gymbro.data.Esercizio
 import com.my.gymbro.data.GymBroRepository
 import com.my.gymbro.data.Impostazioni
+import com.my.gymbro.data.nomeCatalogo
+import com.my.gymbro.data.nomeGiaUsato
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 /** Cosa mostra la sezione Esercizi: la lista o il form (nuovo esercizio = null). */
 sealed interface EditState {
@@ -50,39 +52,66 @@ class EserciziViewModel(
     /** Messaggi una-tantum per la UI (es. snackbar di errore). */
     val messaggi: SharedFlow<String> = _messaggi.asSharedFlow()
 
-    /** Inserisce un nuovo esercizio (id == 0) o aggiorna quello esistente. */
-    fun salva(esercizio: Esercizio) = viewModelScope.launch {
-        editing = EditState.None
-        if (esercizio.id == 0L) repo.aggiungiEsercizio(esercizio)
-        else repo.aggiornaEsercizio(esercizio)
+    /** Perché il form non è stato salvato (null = nessun problema): il form resta aperto con i dati. */
+    var erroreSalvataggio by mutableStateOf<String?>(null)
+        private set
+
+    fun chiudiErroreSalvataggio() { erroreSalvataggio = null }
+
+    private var salvataggio: Job? = null
+
+    /**
+     * Inserisce un nuovo esercizio (id == 0) o aggiorna quello esistente. Due esercizi con lo stesso
+     * nome non sono ammessi (il form lo impedisce già; qui per sicurezza, con la libreria aggiornata).
+     * Il form si chiude solo a salvataggio riuscito; l'immagine sostituita si elimina solo allora.
+     */
+    fun salva(esercizio: Esercizio) {
+        if (salvataggio?.isActive == true) return // doppio tocco su "Salva"
+        val immaginePrima = (editing as? EditState.Form)?.esercizio?.immaginePath
+        salvataggio = viewModelScope.lanciaProtetto("Salvataggio dell'esercizio", seErrore = { e ->
+            erroreSalvataggio = "Non è stato possibile salvare \"${esercizio.nome}\": ${motivoErrore(e)}. " +
+                "Le modifiche sono ancora nel modulo: puoi riprovare."
+        }) {
+            if (nomeGiaUsato(esercizio.nome, repo.eserciziOra(), esercizio.id)) {
+                erroreSalvataggio = "Esiste già un esercizio chiamato \"${esercizio.nome}\"."
+                return@lanciaProtetto
+            }
+            if (esercizio.id == 0L) repo.aggiungiEsercizio(esercizio)
+            else repo.aggiornaEsercizio(esercizio)
+            if (immaginePrima != null && immaginePrima != esercizio.immaginePath) ImageStorage.elimina(immaginePrima)
+            editing = EditState.None
+        }
     }
 
     /**
      * Elimina l'esercizio. Se è in una scheda o nello storico degli allenamenti (FK RESTRICT) non si
      * può: il messaggio spiega quale dei due casi, così si sa cosa fare.
      */
-    fun elimina(esercizio: Esercizio) = viewModelScope.launch {
+    fun elimina(esercizio: Esercizio) {
         val nome = "\"${esercizio.nome}\""
-        val schede = repo.schedeConEsercizio(esercizio.id)
-        val motivo = when {
-            schede.size == 1 -> "è nella scheda \"${schede[0]}\". Toglilo prima da lì."
-            schede.size > 1 -> "è nelle schede ${schede.joinToString(", ") { "\"$it\"" }}. Toglilo prima da lì."
-            AllenamentoEngine.usaEsercizio(esercizio.id) -> "fa parte dell'allenamento in corso. Terminalo prima."
-            repo.esercizioNelloStorico(esercizio.id) -> "compare nello storico dei tuoi allenamenti."
-            else -> null
-        }
-        if (motivo != null) {
-            _messaggi.tryEmit("Impossibile eliminare $nome: $motivo")
-            return@launch
-        }
-        try {
+        viewModelScope.lanciaProtetto("Eliminazione dell'esercizio", seErrore = { e ->
+            _messaggi.tryEmit(
+                if (e is SQLiteConstraintException) "Impossibile eliminare $nome: è in uso." // comparso nel frattempo
+                else "Impossibile eliminare $nome: ${motivoErrore(e)}."
+            )
+        }) {
+            val schede = repo.schedeConEsercizio(esercizio.id)
+            val motivo = when {
+                schede.size == 1 -> "è nella scheda \"${schede[0]}\". Toglilo prima da lì."
+                schede.size > 1 -> "è nelle schede ${schede.joinToString(", ") { "\"$it\"" }}. Toglilo prima da lì."
+                AllenamentoEngine.usaEsercizio(esercizio.id) -> "fa parte dell'allenamento in corso. Terminalo prima."
+                repo.esercizioNelloStorico(esercizio.id) -> "compare nello storico dei tuoi allenamenti."
+                else -> null
+            }
+            if (motivo != null) {
+                _messaggi.tryEmit("Impossibile eliminare $nome: $motivo")
+                return@lanciaProtetto
+            }
             repo.eliminaEsercizio(esercizio)
             ImageStorage.elimina(esercizio.immaginePath)
             // Un predefinito eliminato non deve ricomparire al prossimo aggiornamento del catalogo.
-            if (esercizio.predefinito) impostazioni.segnaPredefinitoEliminato(esercizio.nome)
-        } catch (_: SQLiteConstraintException) {
-            // Riferimento comparso nel frattempo (es. allenamento in corso).
-            _messaggi.tryEmit("Impossibile eliminare $nome: è in uso.")
+            // Per chiave: se era stato rinominato, il catalogo lo conosce col nome originale.
+            if (esercizio.predefinito) impostazioni.segnaPredefinitoEliminato(esercizio.nomeCatalogo)
         }
     }
 

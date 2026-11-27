@@ -37,7 +37,7 @@ internal fun confrontaConStorico(log: List<SerieEseguita>, storico: List<RigaRep
         if (prec.isEmpty()) return@mapValues ConfrontoEsercizio(primaVolta = true, record = false, deltaVolume = null)
 
         // Macchine assistite: il peso è aiuto, il record è averne usato meno di sempre e il volume non ha senso.
-        val inverso = caricoInverso(prec.first().nomeEsercizio)
+        val inverso = caricoInverso(prec.first().nomeCatalogo)
         val pesoOra = serie.mapNotNull { it.pesoKg }.filter { it > 0f }.maxOrNull()
         val pesoPrima = prec.mapNotNull { it.pesoKg }.filter { it > 0f }.maxOrNull()
         val aTempo = serie.all { it.durataSec != null }
@@ -83,7 +83,7 @@ internal fun confrontoConStorico(log: List<SerieEseguita>): Map<Long, ConfrontoE
 
 /** Volume (kg × ripetizioni) delle serie; quelle sulle macchine assistite non contano, il loro peso è aiuto. */
 internal fun volumeSerie(stato: StatoEsecuzione, serie: List<SerieEseguita>): Double =
-    serie.filterNot { caricoInverso(stato.nomiEseguiti[it.esercizioId].orEmpty()) }
+    serie.filterNot { caricoInverso(stato.catalogoEseguiti[it.esercizioId] ?: stato.nomiEseguiti[it.esercizioId].orEmpty()) }
         .sumOf { volume(it.pesoKg, it.ripetizioni) }
 
 /** Tutti i muscoli lavorati nell'allenamento: principali di almeno un esercizio, poi gli altri. */
@@ -94,7 +94,7 @@ internal fun muscoliAllenamento(stato: StatoEsecuzione): MuscoliCoinvolti? {
     stato.log.map { it.esercizioId }.distinct().forEach { id ->
         val gruppo = gruppi[id]
         if (gruppo == GruppoMuscolare.STRETCHING) return@forEach
-        val nome = stato.nomiEseguiti[id] ?: return@forEach
+        val nome = stato.catalogoEseguiti[id] ?: stato.nomiEseguiti[id] ?: return@forEach
         val mc = muscoliCoinvolti(nome, gruppo) ?: return@forEach
         principali += mc.principali
         secondari += mc.secondari

@@ -181,7 +181,8 @@ private fun EsecuzioneAttiva(
                                 descrizione = es.descrizione,
                                 nota = es.note,
                                 gruppo = es.gruppoMuscolare,
-                                modifier = Modifier.size(72.dp)
+                                modifier = Modifier.size(72.dp),
+                                chiave = es.chiaveSeed,
                             )
                             Column(Modifier.weight(1f)) {
                                 Sopratitolo("Poi", colore = riposo.accentoTesto)
@@ -493,7 +494,8 @@ private fun ListaStato(
                             descrizione = es.descrizione,
                             nota = es.note,
                             gruppo = es.gruppoMuscolare,
-                            modifier = Modifier.size(52.dp)
+                            modifier = Modifier.size(52.dp),
+                            chiave = es.chiaveSeed,
                         )
                     }
                 },
@@ -516,7 +518,7 @@ private fun FotoEsercizio(es: EsercizioEsec) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         ImmagineEsercizioAnimata(es.immaginePath)
-        muscoliCoinvolti(es.nome, es.gruppoMuscolare)?.let { mc ->
+        muscoliCoinvolti(es.nomeCatalogo, es.gruppoMuscolare)?.let { mc ->
             Text(
                 buildString {
                     if (es.gruppoMuscolare == com.my.gymbro.data.GruppoMuscolare.STRETCHING) {
@@ -541,7 +543,10 @@ private fun FotoEsercizio(es: EsercizioEsec) {
         }
     }
     if (dettaglio) {
-        DialogoEsercizio(es.nome, es.immaginePath, es.descrizione, es.note, es.gruppoMuscolare, onChiudi = { dettaglio = false })
+        DialogoEsercizio(
+            es.nome, es.immaginePath, es.descrizione, es.note, es.gruppoMuscolare,
+            onChiudi = { dettaglio = false }, chiave = es.chiaveSeed,
+        )
     }
 }
 

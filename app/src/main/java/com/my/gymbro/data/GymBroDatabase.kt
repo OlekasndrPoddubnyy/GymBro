@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Sessione::class,
         SerieEseguita::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -35,6 +35,25 @@ abstract class GymBroDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3: esercizi.chiaveSeed, il nome di catalogo degli esercizi predefiniti, che resta anche se
+         * l'utente li rinomina. Si assegna a quelli che hanno ancora il nome del catalogo.
+         */
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE esercizi ADD COLUMN chiaveSeed TEXT")
+                val predefiniti = mutableListOf<Pair<Long, String>>()
+                db.query("SELECT id, nome FROM esercizi WHERE predefinito = 1").use { c ->
+                    while (c.moveToNext()) predefiniti += c.getLong(0) to c.getString(1)
+                }
+                val catalogo = eserciziPredefiniti().mapTo(HashSet()) { it.nome }
+                chiaviIniziali(predefiniti, catalogo).forEach { (id, chiave) ->
+                    db.execSQL("UPDATE esercizi SET chiaveSeed = ? WHERE id = ?", arrayOf<Any>(chiave, id))
+                }
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_esercizi_chiaveSeed` ON `esercizi` (`chiaveSeed`)")
+            }
+        }
+
         fun getInstance(context: Context): GymBroDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -42,7 +61,7 @@ abstract class GymBroDatabase : RoomDatabase() {
                     GymBroDatabase::class.java,
                     "gymbro.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

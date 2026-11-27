@@ -28,6 +28,7 @@ internal fun EsercizioSchedaCompleto.toEsecuzione() = EsercizioEsec(
     descrizione = esercizio.descrizione,
     note = esercizioScheda.note,
     gruppoMuscolare = esercizio.gruppoMuscolare,
+    chiaveSeed = esercizio.chiaveSeed,
     serie = serie.sortedBy { it.numero }.map { sp ->
         SerieEsec(sp.numero, sp.durataSec, sp.ripetizioni, sp.pesoKg, sp.recuperoSec)
     }.ifEmpty { listOf(SerieEsec(1, null, null, null, 60)) }
@@ -44,6 +45,7 @@ internal fun EsercizioEsec.sostituitoCon(nuovo: Esercizio) = copy(
     descrizione = nuovo.descrizione,
     note = null,
     gruppoMuscolare = nuovo.gruppoMuscolare,
+    chiaveSeed = nuovo.chiaveSeed,
     // L'obiettivo di Gym Buddy era dell'esercizio sostituito.
     obiettivo = null,
     calibrazione = false,

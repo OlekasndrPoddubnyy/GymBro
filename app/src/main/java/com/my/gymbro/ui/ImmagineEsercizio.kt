@@ -131,6 +131,7 @@ fun MiniaturaEsercizio(
     nota: String? = null,
     gruppo: GruppoMuscolare? = null,
     segnaposto: (@Composable () -> Unit)? = null,
+    chiave: String? = null,
 ) {
     var aperta by remember { mutableStateOf(false) }
     ImmagineEsercizioAnimata(
@@ -143,7 +144,7 @@ fun MiniaturaEsercizio(
         modifier = modifier.clip(RoundedCornerShape(14.dp)).clickable { aperta = true }
     )
     if (aperta) {
-        DialogoEsercizio(nome, path, descrizione, nota, gruppo, onChiudi = { aperta = false })
+        DialogoEsercizio(nome, path, descrizione, nota, gruppo, onChiudi = { aperta = false }, chiave = chiave)
     }
 }
 
@@ -158,8 +159,10 @@ fun DialogoEsercizio(
     onChiudi: () -> Unit,
     testoConferma: String? = null,
     onConferma: (() -> Unit)? = null,
+    /** Nome di catalogo (esercizi predefiniti): i muscoli si trovano anche se è stato rinominato. */
+    chiave: String? = null,
 ) {
-    val muscoli = remember(nome, gruppo) { muscoliCoinvolti(nome, gruppo) }
+    val muscoli = remember(nome, chiave, gruppo) { muscoliCoinvolti(chiave ?: nome, gruppo) }
     AlertDialog(
         onDismissRequest = onChiudi,
         confirmButton = {
@@ -225,7 +228,8 @@ fun MiniaturaLibreria(es: Esercizio, modifier: Modifier = Modifier.size(56.dp), 
             descrizione = es.descrizione,
             gruppo = es.gruppoMuscolare,
             modifier = modifier,
-            segnaposto = segnaposto
+            segnaposto = segnaposto,
+            chiave = es.chiaveSeed,
         )
     } else {
         ImmagineEsercizioAnimata(
@@ -251,6 +255,7 @@ fun AnteprimaScelta(es: Esercizio, testoConferma: String, onConferma: () -> Unit
         gruppo = es.gruppoMuscolare,
         onChiudi = onAnnulla,
         testoConferma = testoConferma,
-        onConferma = onConferma
+        onConferma = onConferma,
+        chiave = es.chiaveSeed,
     )
 }

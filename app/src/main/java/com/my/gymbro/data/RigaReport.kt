@@ -14,4 +14,9 @@ data class RigaReport(
     val ripetizioni: Int?,
     val pesoKg: Float?,
     val durataSec: Int?,
-)
+    /** [Esercizio.chiaveSeed] dell'esercizio. */
+    val chiaveSeed: String? = null,
+) {
+    /** Il nome per le tabelle del catalogo (muscoli, macchine assistite), anche se rinominato. */
+    val nomeCatalogo: String get() = chiaveSeed ?: nomeEsercizio
+}

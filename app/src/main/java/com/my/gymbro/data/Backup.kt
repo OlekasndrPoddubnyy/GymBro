@@ -44,6 +44,7 @@ fun codificaBackup(d: DatiBackup): String {
                 .metti("descrizione", e.descrizione)
                 .metti("immaginePath", e.immaginePath)
                 .put("predefinito", e.predefinito)
+                .metti("chiaveSeed", e.chiaveSeed)
         }))
         .put("schede", JSONArray(d.schede.map { s ->
             JSONObject()
@@ -111,7 +112,7 @@ fun decodificaBackup(testo: String): DatiBackup {
     return try {
         DatiBackup(
             creatoIl = radice.optLong("creatoIl", 0L),
-            esercizi = radice.lista("esercizi") { o ->
+            esercizi = conChiavi(radice.lista("esercizi") { o ->
                 Esercizio(
                     id = o.getLong("id"),
                     nome = o.getString("nome"),
@@ -120,8 +121,9 @@ fun decodificaBackup(testo: String): DatiBackup {
                     descrizione = o.testoONull("descrizione"),
                     immaginePath = o.testoONull("immaginePath"),
                     predefinito = o.optBoolean("predefinito", false),
+                    chiaveSeed = o.testoONull("chiaveSeed"),
                 )
-            },
+            }),
             schede = radice.lista("schede") { o ->
                 Scheda(
                     id = o.getLong("id"),
@@ -183,6 +185,20 @@ fun decodificaBackup(testo: String): DatiBackup {
     } catch (e: JSONException) {
         throw BackupNonValido("Il backup è danneggiato o incompleto.", e)
     }
+}
+
+/**
+ * I backup fatti prima delle chiavi di catalogo non le hanno: si assegnano come nella migrazione
+ * del database (predefiniti col nome ancora nel catalogo). Se il backup ne ha anche una sola, è
+ * recente e le chiavi sono già quelle giuste.
+ */
+private fun conChiavi(esercizi: List<Esercizio>): List<Esercizio> {
+    if (esercizi.any { it.chiaveSeed != null }) return esercizi
+    val chiavi = chiaviIniziali(
+        esercizi.filter { it.predefinito }.map { it.id to it.nome },
+        eserciziPredefiniti().mapTo(HashSet()) { it.nome },
+    )
+    return esercizi.map { e -> chiavi[e.id]?.let { e.copy(chiaveSeed = it) } ?: e }
 }
 
 /** Con null la chiave non si scrive: in lettura manca, cioè null. */

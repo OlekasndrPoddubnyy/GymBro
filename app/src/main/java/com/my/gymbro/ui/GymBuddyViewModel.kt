@@ -27,6 +27,8 @@ import com.my.gymbro.data.Sostituto
 import com.my.gymbro.data.StatoBuddy
 import com.my.gymbro.data.allenabile
 import com.my.gymbro.data.daSuggerire
+import com.my.gymbro.data.nomeCatalogo
+import com.my.gymbro.data.perNomeCatalogo
 import com.my.gymbro.data.regolePer
 import com.my.gymbro.data.rispondi
 import com.my.gymbro.data.schemaMovimento
@@ -38,7 +40,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 private const val MS_GIORNO = 24 * 60 * 60 * 1000L
 
@@ -114,7 +115,8 @@ class GymBuddyViewModel(
                 }
                 riga.pesoKg?.takeIf { it > 0f }?.let { carichi[riga.esercizioId] = it }
             }
-            val perNome = libreria.associateBy { it.nome }
+            // Le correzioni usano i nomi del catalogo: valgono anche per gli esercizi rinominati.
+            val perNome = libreria.perNomeCatalogo()
             val corretti = mutableMapOf<CoppiaEsercizi, Double>()
             for ((a, b, peso) in CORREZIONI_PREDEFINITE) {
                 val primo = perNome[a] ?: continue
@@ -218,12 +220,14 @@ class GymBuddyViewModel(
     /** @param ripetizioni quelle della prima serie in scheda, per il range di Gym Buddy. */
     fun sostituisci(schedaId: Long, vecchioId: Long, ripetizioni: String?, nuovo: Esercizio, carico: Float?) {
         if (modifica?.isActive == true) return
-        modifica = viewModelScope.launch {
+        modifica = viewModelScope.lanciaProtetto("Sostituzione in scheda", seErrore = { e ->
+            errore = "Sostituzione non fatta: ${motivoErrore(e)}."
+        }) {
             val prima = repo.cambiaEsercizio(schedaId, vecchioId, nuovo.id, carico)
             if (prima == null) {
                 errore = "Sostituzione non fatta: la scheda è cambiata nel frattempo, oppure contiene già " +
                     "\"${nuovo.nome}\"."
-                return@launch
+                return@lanciaProtetto
             }
             val origine = memoria.progresso(ChiaveBuddy(schedaId, vecchioId))
             val impostazioni = memoria.dati.value.impostazioni
@@ -249,10 +253,12 @@ class GymBuddyViewModel(
         if (modifica?.isActive == true) return
         val attuale = memoria.progresso(chiave) ?: return
         val prima = attuale.precedente ?: return
-        modifica = viewModelScope.launch {
+        modifica = viewModelScope.lanciaProtetto("Annullamento della sostituzione", seErrore = { e ->
+            errore = "Non è stato possibile annullare: ${motivoErrore(e)}."
+        }) {
             if (!repo.annullaCambio(chiave.schedaId, chiave.esercizioId, prima)) {
                 errore = "Non si può più annullare: la scheda è cambiata."
-                return@launch
+                return@lanciaProtetto
             }
             val chiaveVecchia = ChiaveBuddy(chiave.schedaId, prima.esercizioId)
             val vecchio = memoria.progresso(chiaveVecchia) ?: ProgressoBuddy()
@@ -282,12 +288,12 @@ internal val EsercizioSchedaCompleto.progredisce: Boolean
     get() = esercizioScheda.modalita == Modalita.RIPETIZIONI && esercizio.gruppoMuscolare.allenabile
 
 internal fun profiloDi(e: Esercizio): ProfiloEsercizio {
-    val muscoli = muscoliCoinvolti(e.nome, e.gruppoMuscolare)
+    val muscoli = muscoliCoinvolti(e.nomeCatalogo, e.gruppoMuscolare)
     return ProfiloEsercizio(
         id = e.id,
         principali = muscoli?.principali.orEmpty().map { it.name }.toSet(),
         secondari = muscoli?.secondari.orEmpty().map { it.name }.toSet(),
-        movimento = schemaMovimento(e.nome, e.gruppoMuscolare),
+        movimento = schemaMovimento(e.nomeCatalogo, e.gruppoMuscolare),
         attrezzo = e.attrezzatura,
     )
 }

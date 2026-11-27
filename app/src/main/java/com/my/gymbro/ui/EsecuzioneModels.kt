@@ -31,7 +31,11 @@ data class EsercizioEsec(
     val gruppoMuscolare: com.my.gymbro.data.GruppoMuscolare? = null,
     val obiettivo: com.my.gymbro.data.Obiettivo? = null, // ≠ null = Gym Buddy attivo
     val calibrazione: Boolean = false,                  // carico ancora da confermare
-)
+    val chiaveSeed: String? = null,                     // nome di catalogo, se predefinito
+) {
+    /** Il nome per le tabelle del catalogo (muscoli, macchine assistite), anche se rinominato. */
+    val nomeCatalogo: String get() = chiaveSeed ?: nome
+}
 
 data class StatoEsecuzione(
     val pronta: Boolean = false,
@@ -52,6 +56,7 @@ data class StatoEsecuzione(
     val pesoInput: String = "",
     val log: List<SerieEseguita> = emptyList(),
     val nomiEseguiti: Map<Long, String> = emptyMap(),  // nomi del log: restano anche dopo una sostituzione
+    val catalogoEseguiti: Map<Long, String> = emptyMap(), // e i loro nomi di catalogo
     val durataTotaleMs: Long = 0,
 ) {
     val esercizioCorrente: EsercizioEsec? get() = esercizi.getOrNull(indiceEsercizio)

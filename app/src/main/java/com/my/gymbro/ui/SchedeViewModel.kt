@@ -76,6 +76,16 @@ class SchedeViewModel(
 
     fun chiudiErroreSalvataggio() { erroreSalvataggio = null }
 
+    /** Operazione sulle schede non riuscita fuori dall'editor (eliminare, duplicare, …); null = nessuna. */
+    var avviso by mutableStateOf<Avviso?>(null)
+        private set
+
+    fun chiudiAvviso() { avviso = null }
+
+    private fun nonRiuscito(titolo: String) = { e: Exception ->
+        avviso = Avviso(titolo, "Il database ha dato errore: ${motivoErrore(e)}. Non è stato cambiato niente.")
+    }
+
     fun mostraLista() { nav = SchedeNav.Lista }
     fun apri(id: Long) { nav = SchedeNav.Dettaglio(id) }
 
@@ -84,7 +94,11 @@ class SchedeViewModel(
         bozza = null
         originale = null
         caricamento?.cancel()
-        caricamento = viewModelScope.launch {
+        caricamento = viewModelScope.lanciaProtetto("Apertura dell'editor", seErrore = { e ->
+            // Senza bozza l'editor resterebbe in caricamento per sempre: si torna indietro.
+            if (nav is SchedeNav.Editor) chiudiEditor()
+            avviso = Avviso("Scheda non aperta", "Non è stato possibile caricare la scheda: ${motivoErrore(e)}.")
+        }) {
             val iniziale = id?.let { repo.caricaSchedaCompleta(it)?.toInModifica() } ?: SchedaInModifica()
             originale = iniziale
             bozza = iniziale
@@ -107,13 +121,17 @@ class SchedeViewModel(
     fun salvaBozza() {
         val s = bozza ?: return
         if (s.nome.isBlank() || salvataggio?.isActive == true) return
-        salvataggio = viewModelScope.launch {
+        salvataggio = viewModelScope.lanciaProtetto("Salvataggio della scheda", seErrore = { e ->
+            // La bozza resta aperta: niente di quanto scritto va perso.
+            erroreSalvataggio = "Il database ha dato errore: ${motivoErrore(e)}. " +
+                "Le modifiche sono ancora qui: puoi riprovare."
+        }) {
             // La bozza resta aperta cambiando sezione: intanto un suo esercizio può essere stato eliminato.
             val mancanti = s.eserciziMancanti(repo.esercizi.first().mapTo(HashSet()) { it.id })
             if (mancanti.isNotEmpty()) {
                 erroreSalvataggio = "Non sono più in libreria: ${mancanti.joinToString(", ") { "\"$it\"" }}. " +
                     "Rimuovili dalla scheda e salva di nuovo."
-                return@launch
+                return@lanciaProtetto
             }
             val (scheda, righe) = s.toEntities()
             repo.salvaScheda(scheda, righe)
@@ -125,14 +143,22 @@ class SchedeViewModel(
 
     fun scheda(id: Long): Flow<SchedaConEsercizi?> = repo.schedaConEsercizi(id)
 
-    fun elimina(scheda: Scheda) = viewModelScope.launch {
-        repo.eliminaScheda(scheda)
-        memoria.dimenticaScheda(scheda.id)
+    fun elimina(scheda: Scheda) {
+        viewModelScope.lanciaProtetto("Eliminazione della scheda", nonRiuscito("Scheda non eliminata")) {
+            repo.eliminaScheda(scheda)
+            memoria.dimenticaScheda(scheda.id)
+        }
     }
 
     /** La copia ha anche gli obiettivi e i contatori di Gym Buddy dell'originale. */
-    fun duplica(scheda: Scheda) = viewModelScope.launch {
-        val completa = repo.caricaSchedaCompleta(scheda.id) ?: return@launch
+    fun duplica(scheda: Scheda) {
+        viewModelScope.lanciaProtetto("Duplicazione della scheda", nonRiuscito("Scheda non duplicata")) {
+            duplicaOra(scheda)
+        }
+    }
+
+    private suspend fun duplicaOra(scheda: Scheda) {
+        val completa = repo.caricaSchedaCompleta(scheda.id) ?: return
         val copia = completa.toInModifica().copy(
             id = 0,
             nome = completa.scheda.nome + " (copia)",
@@ -159,10 +185,14 @@ class SchedeViewModel(
     /** Ultimo QR non valido inquadrato: la fotocamera lo rivede a ogni fotogramma, l'errore si mostra una volta. */
     private var scartato: String? = null
 
-    fun condividi(schedaId: Long) = viewModelScope.launch {
-        val completa = repo.caricaSchedaCompleta(schedaId) ?: return@launch
-        val pronto = withContext(Dispatchers.Default) { qrPerScheda(completa.perCondividere()) }
-        qr = QrDaMostrare(completa.scheda.nome, pronto)
+    fun condividi(schedaId: Long) {
+        viewModelScope.lanciaProtetto("Creazione del QR", seErrore = { e ->
+            avviso = Avviso("QR non creato", "Non è stato possibile preparare il QR della scheda: ${motivoErrore(e)}.")
+        }) {
+            val completa = repo.caricaSchedaCompleta(schedaId) ?: return@lanciaProtetto
+            val pronto = withContext(Dispatchers.Default) { qrPerScheda(completa.perCondividere()) }
+            qr = QrDaMostrare(completa.scheda.nome, pronto)
+        }
     }
 
     fun chiudiQr() { qr = null }

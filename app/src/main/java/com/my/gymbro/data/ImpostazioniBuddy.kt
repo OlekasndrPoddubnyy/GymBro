@@ -45,7 +45,7 @@ fun ImpostazioniBuddy.regolePer(esercizio: Esercizio, ripetizioni: String?): Reg
     }
     return RegoleBuddy(
         minimo, massimo, passoRip, incremento, conferme, progressioneRapida,
-        caricoInverso = caricoInverso(esercizio.nome),
+        caricoInverso = caricoInverso(esercizio.nomeCatalogo),
     )
 }
 

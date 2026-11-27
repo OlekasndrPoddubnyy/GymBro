@@ -70,7 +70,7 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
 
         is SchedeNav.Anteprima -> AnteprimaSchedaCondivisa(
             scheda = n.scheda,
-            nomiLibreria = remember(libreria) { libreria.map { it.nome } },
+            libreria = libreria,
             nomiSchede = remember(schede) { schede.mapTo(HashSet()) { it.nome } },
             salvando = vm.salvandoCondivisa,
             onSalva = vm::salvaCondivisa,
@@ -105,6 +105,14 @@ fun SchedeScreen(onAvviaAllenamento: (Long) -> Unit) {
     }
 
     vm.qr?.let { DialogoQr(it, onChiudi = vm::chiudiQr) }
+    vm.avviso?.let { a ->
+        AlertDialog(
+            onDismissRequest = vm::chiudiAvviso,
+            title = { Text(a.titolo) },
+            text = { Text(a.testo) },
+            confirmButton = { TextButton(onClick = vm::chiudiAvviso) { Text("OK") } }
+        )
+    }
     vm.erroreQr?.let { errore ->
         AlertDialog(
             onDismissRequest = vm::chiudiErroreQr,
@@ -329,6 +337,7 @@ private fun SchedaDettaglio(
                             nota = ec.esercizioScheda.note,
                             gruppo = ec.esercizio.gruppoMuscolare,
                             modifier = Modifier.size(72.dp),
+                            chiave = ec.esercizio.chiaveSeed,
                             segnaposto = {
                                 Text(
                                     ec.esercizio.gruppoMuscolare.label.take(3).uppercase(),
